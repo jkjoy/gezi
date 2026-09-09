@@ -1,0 +1,13 @@
+# 复制本文件为 .dev.vars 并填写随机生成的值（.dev.vars 已被 .gitignore 排除，不得提交）
+# 所有密钥必须相互独立，不要复用同一个值。
+
+# 邀请 IP 去重 HMAC 密钥（独立于其他密钥）
+INVITE_HASH_SECRET=please-generate-a-long-random-string-here
+
+# 一次性管理员初始化：POST /api/admin/init 携带该 token 调用，成功后入口永久关闭
+ADMIN_INIT_TOKEN=please-generate-another-random-token
+ADMIN_INIT_USERNAME=admin
+ADMIN_INIT_PASSWORD=please-set-a-strong-password
+
+# 说明：本方案使用数据库随机会话令牌，不使用 SESSION_SECRET 签名。
+# 若实现改为签名会话，请额外增加独立会话密钥。

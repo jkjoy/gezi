@@ -1,0 +1,31 @@
+# GeoPixel Wall Worker 配置
+# 部署前：执行 `npx wrangler d1 create gezi` 与 `npx wrangler r2 bucket create gezi-uploads`，
+# 然后把真实的 database_id 填到下方占位处。本地开发可直接使用占位 ID。
+
+name = "gezi"
+main = "src/index.ts"
+compatibility_date = "2025-08-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+# /api/* 必须先进入 Worker（鉴权与业务逻辑），不能被静态资源直接处理
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gezi"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "gezi-uploads"
+
+[triggers]
+# 00:00 UTC（北京时间 08:00）日结；01:00 UTC 过期会话/速率记录清理与孤儿图片清理
+crons = ["0 0 * * *", "0 1 * * *"]
+
+[observability]
+enabled = true

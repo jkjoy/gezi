@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoPixel Wall — 公共像素墙</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">GeoPixel Wall</div>
+    <nav>
+      <a href="/dashboard.html" id="nav-dashboard">我的后台</a>
+      <a href="/admin.html" id="nav-admin" hidden>管理后台</a>
+    </nav>
+  </header>
+
+  <main class="wall-page">
+    <section class="wall-wrap">
+      <div id="wall" class="wall" tabindex="0" aria-label="像素墙，拖选矩形区域发布内容">
+        <div id="grid-overlay" class="grid-overlay"></div>
+        <div id="cells" class="cells"></div>
+        <div id="selection" class="selection" hidden></div>
+      </div>
+      <p class="hint">拖选矩形区域发布内容 · 触屏同样支持 · 详情请点击已占用区域</p>
+    </section>
+
+    <aside class="panel" id="side-panel">
+      <div id="panel-view">
+        <h3>像素墙</h3>
+        <p>选择一块空闲区域，展示你的文字、图片与链接。</p>
+        <ul class="rules">
+          <li>发布费用 = 面积 × 每格价格（一次性）</li>
+          <li>每日占用费 = 面积 × 每格日价</li>
+          <li>余额不足时内容过期，位置释放给他人</li>
+        </ul>
+        <div id="occupied-info" class="occupied-info"></div>
+      </div>
+
+      <div id="panel-select" hidden>
+        <h3>发布内容</h3>
+        <div class="coords">
+          <label>X <input type="number" id="in-x" min="0" max="99"></label>
+          <label>Y <input type="number" id="in-y" min="0" max="99"></label>
+          <label>宽 <input type="number" id="in-w" min="1" max="100"></label>
+          <label>高 <input type="number" id="in-h" min="1" max="100"></label>
+        </div>
+        <p class="fee-preview" id="fee-preview"></p>
+        <label class="field">文字（可选）<textarea id="in-text" maxlength="500" rows="3"></textarea></label>
+        <label class="field">链接（可选，http/https）<input type="url" id="in-link" maxlength="300" placeholder="https://example.com"></label>
+        <label class="field">图片（可选，JPEG/PNG/WebP）<input type="file" id="in-image" accept="image/jpeg,image/png,image/webp"></label>
+        <img id="img-preview" class="img-preview" alt="" hidden>
+        <div class="actions">
+          <button id="btn-publish" class="primary">发布</button>
+          <button id="btn-cancel">取消</button>
+        </div>
+        <p class="msg" id="publish-msg"></p>
+      </div>
+
+      <div id="panel-detail" hidden>
+        <h3>内容详情</h3>
+        <div id="detail-body"></div>
+        <button id="btn-close-detail">关闭</button>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/assets/api.js"></script>
+  <script src="/assets/wall.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "name": "gezi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GeoPixel Wall — 公共像素墙（Cloudflare Workers + D1 + R2）",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:migrate:local": "wrangler d1 migrations apply gezi --local",
+    "db:migrate:remote": "wrangler d1 migrations apply gezi --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "@playwright/test": "^1.54.0",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.130.0"
+  }
+}

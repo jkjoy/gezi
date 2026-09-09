@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理后台 — GeoPixel Wall</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">GeoPixel Wall</a></div>
+    <nav>
+      <a href="/">像素墙</a>
+      <a href="/dashboard.html">我的后台</a>
+      <span id="user-badge" class="user-badge"></span>
+      <button id="btn-logout" class="linklike">退出</button>
+    </nav>
+  </header>
+
+  <main class="admin-page">
+    <section class="card">
+      <h3>系统配置</h3>
+      <form id="settings-form"></form>
+      <div class="actions"><button class="primary" type="submit" form="settings-form">保存配置</button></div>
+      <p class="msg" id="settings-msg"></p>
+    </section>
+
+    <section class="card">
+      <h3>用户</h3>
+      <form id="user-search" class="inline-form">
+        <input type="search" id="user-q" placeholder="搜索用户名">
+        <button type="submit">搜索</button>
+      </form>
+      <div id="users"></div>
+    </section>
+
+    <section class="card">
+      <h3>批量赠送积分</h3>
+      <form id="bulk-form" class="stack-form">
+        <label>用户 ID（逗号或换行分隔）<textarea id="bulk-users" rows="3"></textarea></label>
+        <label>每人积分 <input type="number" id="bulk-amount" min="1" required></label>
+        <label>原因 <input type="text" id="bulk-reason" maxlength="200" required></label>
+        <button class="primary" type="submit">发放</button>
+      </form>
+      <div id="bulk-result"></div>
+    </section>
+
+    <section class="card">
+      <h3>捐助订单</h3>
+      <div id="orders"><p>加载中…</p></div>
+    </section>
+
+    <section class="card">
+      <h3>运维</h3>
+      <div class="actions">
+        <button id="btn-run-settlement">手动日结</button>
+        <button id="btn-run-cleanup">清理孤儿图片</button>
+      </div>
+      <pre id="ops-result" class="ops-result"></pre>
+    </section>
+
+    <section class="card wide">
+      <h3>操作记录</h3>
+      <div id="audit"><p>加载中…</p></div>
+      <button id="btn-audit-more" hidden>加载更多</button>
+    </section>
+  </main>
+
+  <script src="/assets/api.js"></script>
+  <script src="/assets/admin.js"></script>
+</body>
+</html>

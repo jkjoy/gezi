@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的后台 — GeoPixel Wall</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">GeoPixel Wall</a></div>
+    <nav>
+      <a href="/">像素墙</a>
+      <span id="user-badge" class="user-badge"></span>
+      <button id="btn-logout" class="linklike">退出</button>
+    </nav>
+  </header>
+
+  <main class="dash-page">
+    <section class="card">
+      <h3>账户</h3>
+      <div id="account-info"><p>加载中…</p></div>
+      <h4>邀请链接</h4>
+      <p class="invite-box"><code id="invite-link">…</code></p>
+      <p class="muted" id="invite-stats"></p>
+    </section>
+
+    <section class="card wide">
+      <h3>我的内容</h3>
+      <div id="my-posts"><p>加载中…</p></div>
+    </section>
+
+    <section class="card">
+      <h3>积分流水</h3>
+      <div id="ledger"><p>加载中…</p></div>
+      <button id="btn-ledger-more" hidden>加载更多</button>
+    </section>
+
+    <section class="card">
+      <h3>捐助</h3>
+      <p class="muted">捐助确认后按下单时的兑换率获得积分。</p>
+      <form id="donate-form" class="donate-form">
+        <label>金额（元）<input type="number" id="donate-yuan" min="1" step="0.01" required></label>
+        <button class="primary" type="submit">创建捐助订单</button>
+      </form>
+      <div id="orders"><p>加载中…</p></div>
+    </section>
+  </main>
+
+  <script src="/assets/api.js"></script>
+  <script src="/assets/dashboard.js"></script>
+</body>
+</html>
