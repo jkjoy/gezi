@@ -2,6 +2,7 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  const icon = (name, size) => (window.Icons ? Icons.svg(name, { size: size || 14 }) : "");
 
   const SETTING_FIELDS = [
     ["publishPriceP", "每格发布价格 P", 0, 1000000],
@@ -87,9 +88,9 @@
         const div = document.createElement("div");
         div.className = "order-item";
         const statusTag =
-          o.status === "pending" ? '<span class="tag warn">待确认</span>'
-          : o.status === "confirmed" ? '<span class="tag ok">已确认</span>'
-          : '<span class="tag err">已取消</span>';
+          o.status === "pending" ? `<span class="tag warn">${icon("warning-circle")} 待确认</span>`
+          : o.status === "confirmed" ? `<span class="tag ok">${icon("check-circle")} 已确认</span>`
+          : `<span class="tag err">${icon("x-circle")} 已取消</span>`;
         div.innerHTML = `
           ${statusTag}
           <b>${API.esc(o.username)}</b>
@@ -99,7 +100,7 @@
         `;
         if (o.status === "pending") {
           const btn = document.createElement("button");
-          btn.textContent = "确认到账";
+          btn.innerHTML = `${icon("check-circle")} 确认到账`;
           btn.addEventListener("click", () => confirmOrder(o));
           div.appendChild(btn);
         }

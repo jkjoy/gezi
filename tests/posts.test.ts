@@ -29,7 +29,7 @@ it("发布成功：扣发布费、占格、记账一次完成；面积与费用�
   const s = await register("pub1");
   await grantPoints(s.user.id, 100);
   // 4×3 = 12 格，P=2 → 24 积分（README 示例）
-  const res = await publish(s.cookie, { requestId: reqId(), x: 10, y: 20, width: 4, height: 3, text: "hello" });
+  const res = await publish(s.cookie, { requestId: reqId(), x: 10, y: 20, width: 4, height: 3, text: "hello", link: "https://example.com" });
   expect(res.status).toBe(200);
   const data = (await res.json()) as { post: { id: string; x: number; y: number } };
   expect(data.post.x).toBe(10);
@@ -44,9 +44,10 @@ it("发布成功：扣发布费、占格、记账一次完成；面积与费用�
   expect(post!.price_p).toBe(2);
   expect(post!.price_d).toBe(1);
 
-  // 墙面可见
-  const wall = (await (await jsonReq("GET", "/api/wall")).json()) as { posts: unknown[] };
+  // 墙面可见，链接一并返回（前端点击直达依赖该字段）
+  const wall = (await (await jsonReq("GET", "/api/wall")).json()) as { posts: Array<{ link: string | null }> };
   expect(wall.posts).toHaveLength(1);
+  expect(wall.posts[0]!.link).toBe("https://example.com");
 });
 
 it("非法边界：负数、越界、零尺寸、全墙超界被拒绝", async () => {

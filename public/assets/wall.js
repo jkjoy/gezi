@@ -1,4 +1,9 @@
-/* 像素墙交互：拖选（Pointer Events，支持反向拖选与取消）、发布、详情 */
+/* 像素墙交互：
+ *  - 拖选发布（Pointer Events，支持反向拖选与取消）
+ *  - 内容块文字按占用格子等比例放大
+ *  - 点击有链接的内容块直接打开链接（http/https，新窗口 noopener）
+ *  - 鼠标悬停显示完整信息（全文、位置尺寸、链接）
+ */
 (function () {
   "use strict";
   const GRID = 100;
@@ -10,29 +15,29 @@
   const selEl = $("selection");
   const panelView = $("panel-view");
   const panelSelect = $("panel-select");
-  const panelDetail = $("panel-detail");
   const occupiedInfo = $("occupied-info");
   const feePreview = $("fee-preview");
   const publishMsg = $("publish-msg");
+  const tooltip = $("cell-tooltip");
 
   let config = { publishPriceP: 2, dailyPriceD: 1, textMax: 500 };
-  let occupied = new Set(); // "x,y" 集合，仅用于交互提示
+  let occupied = new Set(); // "x,y"，仅用于交互提示
   let loggedIn = false;
-  let uploadedImage = null; // { id, key }
-  let currentSel = null; // { x, y, w, h }
+  let uploadedImage = null;
+  let currentSel = null;
 
   // ---- 初始化 ----
   async function init() {
     try {
       config = await API.get("/api/config");
-      document.querySelector('meta[name="viewport"]');
-    } catch (_) { /* 使用默认配置 */ }
+    } catch (_) { /* 用默认配置 */ }
     overlay.style.backgroundSize = `${100 / GRID}% ${100 / GRID}%`;
     try {
       const me = await API.get("/api/auth/me");
       loggedIn = !!me.user;
       if (me.user) {
-        $("nav-dashboard").textContent = `我的后台 (${me.user.username})`;
+        $("nav-dashboard").innerHTML =
+          `${iconTag("user-circle", 16)} 我的后台 (${API.esc(me.user.username)})`;
         if (me.user.role === "admin") $("nav-admin").hidden = false;
       }
     } catch (_) { /* 未登录 */ }
@@ -42,33 +47,57 @@
     bindEvents();
   }
 
+  function iconTag(name, size) {
+    return window.Icons ? Icons.svg(name, { size: size || 16 }) : "";
+  }
+
   async function reportInvite(code) {
     try {
       const r = await API.post("/api/invite/visit", { code });
-      if (r.rewarded) {
-        occupiedInfo.textContent = "通过邀请链接访问成功，邀请人已获得积分奖励。";
-      }
-    } catch (_) { /* 静默失败：无效邀请码等情况 */ }
+      if (r.rewarded) occupiedInfo.textContent = "通过邀请链接访问成功，邀请人已获得积分奖励。";
+    } catch (_) { /* 静默 */ }
   }
 
+  // ---- 文字等比例缩放 ----
+  function cellDisplayPx() {
+    return wall.clientWidth / GRID; // 每格当前显示像素
+  }
+  function fitFont(wCells, hCells) {
+    const px = cellDisplayPx();
+    const shortest = Math.min(wCells, hCells) * px; // 块短边像素
+    return Math.max(7, Math.min(72, shortest * 0.5));
+  }
+  function applyFont(item) {
+    const w = Number(item.dataset.w);
+    const h = Number(item.dataset.h);
+    if (w && h) item.style.fontSize = fitFont(w, h).toFixed(1) + "px";
+  }
+
+  // ---- 墙面渲染 ----
   async function loadWall() {
     try {
       const data = await API.get("/api/wall");
       occupied = new Set();
       cellsEl.textContent = "";
       for (const p of data.posts) {
-        for (let dx = 0; dx < p.width; dx++) {
-          for (let dy = 0; dy < p.height; dy++) {
-            occupied.add(`${p.x + dx},${p.y + dy}`);
-          }
-        }
+        for (let dx = 0; dx < p.width; dx++)
+          for (let dy = 0; dy < p.height; dy++) occupied.add(`${p.x + dx},${p.y + dy}`);
+
         const item = document.createElement("div");
         item.className = `cell-item tint-${(hashCode(p.id) % 5) + 1}`;
         item.style.left = `${p.x}%`;
         item.style.top = `${p.y}%`;
         item.style.width = `${p.width}%`;
         item.style.height = `${p.height}%`;
-        item.dataset.postId = p.id;
+        item.dataset.w = String(p.width);
+        item.dataset.h = String(p.height);
+
+        const link = API.safeLink(p.link);
+        if (link) {
+          item.dataset.link = link;
+          item.classList.add("has-link");
+        }
+
         if (p.image) {
           const img = document.createElement("img");
           img.src = p.image;
@@ -76,12 +105,24 @@
           img.loading = "lazy";
           item.appendChild(img);
         } else if (p.text) {
-          item.textContent = p.text.length > 80 ? p.text.slice(0, 80) + "…" : p.text;
+          const span = document.createElement("span");
+          span.className = "cell-text";
+          span.textContent = p.text;
+          item.appendChild(span);
+          applyFont(item);
         }
+
+        // 点击：有链接直接打开
         item.addEventListener("click", (e) => {
           e.stopPropagation();
-          showDetail(p.id);
+          const l = item.dataset.link;
+          if (l) window.open(l, "_blank", "noopener,noreferrer");
         });
+        // 悬停：显示完整信息
+        item.addEventListener("mouseenter", () => showTip(p));
+        item.addEventListener("mousemove", moveTip);
+        item.addEventListener("mouseleave", hideTip);
+
         cellsEl.appendChild(item);
       }
       const free = GRID * GRID - occupied.size;
@@ -97,7 +138,31 @@
     return Math.abs(h);
   }
 
-  // ---- 拖选（Pointer Events，桌面与触屏统一）----
+  // ---- 悬停浮层 ----
+  function showTip(p) {
+    const link = API.safeLink(p.link);
+    tooltip.innerHTML = `
+      ${p.text ? `<div class="tip-text">${API.esc(p.text)}</div>` : '<div class="tip-text muted">（图片内容）</div>'}
+      <div class="tip-meta">位置 (${p.x}, ${p.y}) · 尺寸 ${p.width}×${p.height}</div>
+      ${link ? `<div class="tip-link">${iconTag("arrow-square-out", 13)} 点击打开：${API.esc(link)}</div>` : '<div class="tip-meta muted">无链接</div>'}
+    `;
+    tooltip.hidden = false;
+  }
+  function moveTip(e) {
+    const pad = 14;
+    const r = tooltip.getBoundingClientRect();
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + r.width > window.innerWidth) x = e.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
+    tooltip.style.left = Math.max(4, x) + "px";
+    tooltip.style.top = Math.max(4, y) + "px";
+  }
+  function hideTip() {
+    tooltip.hidden = true;
+  }
+
+  // ---- 拖选（Pointer Events）----
   let dragging = false;
   let startCell = null;
 
@@ -107,9 +172,7 @@
     const y = Math.floor(((e.clientY - rect.top) / rect.height) * GRID);
     return { x: Math.max(0, Math.min(GRID - 1, x)), y: Math.max(0, Math.min(GRID - 1, y)) };
   }
-
   function drawSelection(a, b) {
-    // 反向拖选也归一化为正矩形
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
     const w = Math.abs(a.x - b.x) + 1;
@@ -123,33 +186,27 @@
   }
 
   wall.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".cell-item")) return; // 点击已占用区域走详情
+    if (e.target.closest(".cell-item")) return; // 点击已占用块走打开链接
     wall.setPointerCapture(e.pointerId);
     dragging = true;
     startCell = cellFromEvent(e);
     drawSelection(startCell, startCell);
     e.preventDefault();
   });
-
   wall.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     drawSelection(startCell, cellFromEvent(e));
   });
-
   wall.addEventListener("pointerup", (e) => {
     if (!dragging) return;
     dragging = false;
-    const end = cellFromEvent(e);
-    drawSelection(startCell, end);
+    drawSelection(startCell, cellFromEvent(e));
     openPublishPanel();
   });
-
   wall.addEventListener("pointercancel", () => {
     dragging = false;
     cancelSelection();
   });
-
-  // 键盘操作：方向键 + 回车（配合坐标输入框）
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") cancelSelection();
   });
@@ -159,7 +216,6 @@
     selEl.hidden = true;
     panelSelect.hidden = true;
     panelView.hidden = false;
-    panelDetail.hidden = true;
   }
 
   // ---- 发布面板 ----
@@ -169,13 +225,10 @@
       return;
     }
     if (!currentSel) return;
-    // 检查选中区域是否与已占用格重叠（服务端最终裁决）
     let overlap = 0;
-    for (let dx = 0; dx < currentSel.w; dx++) {
-      for (let dy = 0; dy < currentSel.h; dy++) {
+    for (let dx = 0; dx < currentSel.w; dx++)
+      for (let dy = 0; dy < currentSel.h; dy++)
         if (occupied.has(`${currentSel.x + dx},${currentSel.y + dy}`)) overlap++;
-      }
-    }
     if (overlap > 0) {
       publishMsg.className = "msg err";
       publishMsg.textContent = `所选区域与已占用内容重叠（${overlap} 格），请重新选择。`;
@@ -188,7 +241,6 @@
     $("in-w").value = currentSel.w;
     $("in-h").value = currentSel.h;
     updateFee();
-    panelDetail.hidden = true;
     panelView.hidden = true;
     panelSelect.hidden = false;
   }
@@ -255,7 +307,6 @@
       publishMsg.textContent = "链接必须以 http:// 或 https:// 开头";
       return;
     }
-    // 客户端生成业务请求 ID：网络超时后重试复用同一 ID，防止重复扣费
     if (!lastRequestId) lastRequestId = crypto.randomUUID().replace(/-/g, "").slice(0, 24);
     const body = {
       requestId: lastRequestId,
@@ -268,7 +319,7 @@
     publishMsg.className = "msg";
     publishMsg.textContent = "发布中…";
     try {
-      const data = await API.post("/api/posts", body);
+      await API.post("/api/posts", body);
       publishMsg.className = "msg ok";
       publishMsg.textContent = "发布成功！";
       lastRequestId = null;
@@ -278,19 +329,18 @@
       $("in-image").value = "";
       $("img-preview").hidden = true;
       await loadWall();
-      setTimeout(() => cancelSelection(), 600);
+      setTimeout(cancelSelection, 600);
     } catch (err) {
       publishMsg.className = "msg err";
       if (err.code === "area_conflict") {
-        publishMsg.textContent = "所选区域已被他人占用（价格或占用可能已变化），请重新选择";
+        publishMsg.textContent = "所选区域已被他人占用，请重新选择";
         await loadWall();
-        lastRequestId = null; // 冲突后允许换区域，使用新请求 ID
+        lastRequestId = null;
       } else if (err.code === "request_conflict") {
         publishMsg.textContent = "请求 ID 冲突，请刷新页面后重试";
         lastRequestId = null;
       } else {
         publishMsg.textContent = "发布失败：" + API.esc(err.message);
-        // 余额不足等业务错误后，重试需要新请求（内容可能变化）
         if (err.code !== "insufficient_balance") lastRequestId = null;
       }
     } finally {
@@ -299,36 +349,19 @@
     }
   }
 
-  // ---- 详情 ----
-  async function showDetail(postId) {
-    try {
-      const data = await API.get(`/api/posts/${encodeURIComponent(postId)}`);
-      const p = data.post;
-      const body = $("detail-body");
-      const safeLink = API.safeLink(p.link);
-      body.innerHTML = `
-        <p class="muted">位置 (${p.x}, ${p.y}) · 尺寸 ${p.width}×${p.height} · 发布于 ${API.fmtTime(p.createdAt)}</p>
-        <p class="muted">发布者 ${API.esc(p.owner)}</p>
-        ${p.image ? `<img src="${API.esc(p.image)}" alt="内容图片" style="max-width:100%;border-radius:6px">` : ""}
-        ${p.text ? `<p style="white-space:pre-wrap">${API.esc(p.text)}</p>` : ""}
-        ${safeLink ? `<p><a href="${API.esc(safeLink)}" target="_blank" rel="noopener noreferrer">打开链接 ↗</a></p>` : ""}
-      `;
-      panelView.hidden = true;
-      panelSelect.hidden = true;
-      panelDetail.hidden = false;
-    } catch (e) {
-      occupiedInfo.textContent = "详情加载失败：" + API.esc(e.message);
-    }
-  }
-
   function bindEvents() {
     ["in-x", "in-y", "in-w", "in-h"].forEach((id) => $(id).addEventListener("input", updateFee));
     $("in-image").addEventListener("change", onUploadChange);
     $("btn-publish").addEventListener("click", onPublish);
     $("btn-cancel").addEventListener("click", cancelSelection);
-    $("btn-close-detail").addEventListener("click", () => {
-      panelDetail.hidden = true;
-      panelView.hidden = false;
+
+    // 窗口尺寸变化时重算所有内容块文字大小（等比例保持）
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        cellsEl.querySelectorAll(".cell-item").forEach(applyFont);
+      }, 150);
     });
   }
 

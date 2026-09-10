@@ -1,41 +1,55 @@
-/* 用户后台：账户、我的内容（编辑/删除）、流水、捐助订单 */
+/* 用户后台：登录态切换、账户、我的内容（编辑/删除）、流水、捐助订单 */
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  const icon = (name, size) => (window.Icons ? Icons.svg(name, { size: size || 16 }) : "");
   let me = null;
 
   async function init() {
     try {
       me = await API.get("/api/auth/me");
-    } catch (_) { /* 未登录 */ }
+    } catch (_) {
+      /* 未登录或网络异常 */
+    }
     if (!me || !me.user) {
-      showAuthForm();
+      showAuth();
       return;
     }
-    $("user-badge").textContent = `${me.user.username} · ${me.user.balance} 积分`;
+    // 已登录：隐藏登录卡，显示内容
+    $("auth-page").hidden = true;
+    $("app-content").hidden = false;
+    $("btn-logout").hidden = false;
+    $("user-badge").innerHTML = `${icon("user-circle")} ${API.esc(me.user.username)} · ${me.user.balance} 积分`;
+    bindApp();
     loadAccount();
     loadMyPosts();
     loadLedger();
     loadOrders();
-    bindEvents();
   }
 
-  function showAuthForm() {
-    const info = $("account-info");
-    info.innerHTML = `
-      <form id="auth-form" class="stack-form">
-        <label>用户名 <input name="username" autocomplete="username" required></label>
-        <label>密码 <input name="password" type="password" autocomplete="current-password" required></label>
-        <button class="primary" type="submit" id="auth-login">登录</button>
-        <button type="button" id="auth-register">注册新账户</button>
-        <p class="msg" id="auth-msg"></p>
-      </form>
-    `;
-    const form = $("auth-form");
+  // ---- 未登录：登录 / 注册 ----
+  function showAuth() {
+    $("auth-page").hidden = false;
+    $("app-content").hidden = true;
+    $("btn-logout").hidden = true;
     let mode = "login";
+    const form = $("auth-form");
+    const submit = $("auth-submit");
+    const toggle = $("auth-toggle");
+    const title = $("auth-title");
+
+    toggle.addEventListener("click", () => {
+      mode = mode === "login" ? "register" : "login";
+      title.textContent = mode === "login" ? "登录" : "注册";
+      submit.textContent = mode === "login" ? "登录" : "注册并登录";
+      toggle.textContent = mode === "login" ? "没有账户？注册" : "已有账户？登录";
+      $("auth-msg").textContent = "";
+    });
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
+      submit.disabled = true;
       try {
         await API.post(`/api/auth/${mode}`, {
           username: String(fd.get("username") || ""),
@@ -45,22 +59,19 @@
       } catch (err) {
         $("auth-msg").className = "msg err";
         $("auth-msg").textContent = (mode === "login" ? "登录失败：" : "注册失败：") + API.esc(err.message);
+        submit.disabled = false;
       }
     });
-    $("auth-register").addEventListener("click", () => {
-      mode = mode === "login" ? "register" : "login";
-      $("auth-login").textContent = mode === "login" ? "登录" : "注册并登录";
-      $("auth-register").textContent = mode === "login" ? "注册新账户" : "改为登录";
-    });
-    $("my-posts").innerHTML = '<p class="muted">登录后可管理内容</p>';
-    $("ledger").innerHTML = "";
-    $("orders").innerHTML = "";
   }
 
-  async function loadAccount() {
+  // ---- 已登录：账户 ----
+  function loadAccount() {
+    const roleTag = me.user.role === "admin"
+      ? `<span class="tag">${icon("shield-check", 14)} 管理员</span>`
+      : `<span class="tag">用户</span>`;
     $("account-info").innerHTML = `
-      <p>用户名：<b>${API.esc(me.user.username)}</b> <span class="tag">${me.user.role === "admin" ? "管理员" : "用户"}</span></p>
-      <p>余额：<b>${me.user.balance}</b> 积分</p>
+      <p>用户名：<b>${API.esc(me.user.username)}</b> ${roleTag}</p>
+      <p class="balance">${icon("wallet", 18)} 余额 <b>${me.user.balance}</b> 积分</p>
     `;
     const link = `${location.origin}/?ref=${encodeURIComponent(me.user.inviteCode)}`;
     $("invite-link").textContent = link;
@@ -82,28 +93,28 @@
         const item = document.createElement("div");
         item.className = "post-item";
         const statusTag =
-          p.status === "active" ? '<span class="tag ok">生效中</span>'
-          : p.status === "expired" ? '<span class="tag err">已过期</span>'
-          : '<span class="tag warn">已删除</span>';
+          p.status === "active" ? `<span class="tag ok">${icon("check-circle", 14)} 生效中</span>`
+          : p.status === "expired" ? `<span class="tag err">${icon("x-circle", 14)} 已过期</span>`
+          : `<span class="tag warn">${icon("trash", 14)} 已删除</span>`;
         item.innerHTML = `
           <div class="row">
             ${statusTag}
-            <span class="muted">(${p.x}, ${p.y}) ${p.width}×${p.height} · 发布费率 P=${p.priceP} D=${p.priceD}</span>
+            <span class="muted">(${p.x}, ${p.y}) ${p.width}×${p.height} · 费率 P=${p.priceP} D=${p.priceD}</span>
             ${p.status === "active" ? `<span class="muted">下次日结 ${API.esc(p.nextBillingDate)}</span>` : ""}
           </div>
           <div class="row">
             <span style="flex:1">${p.text ? API.esc(p.text) : '<span class="muted">（图片内容）</span>'}</span>
-            ${p.link ? `<a href="${API.esc(API.safeLink(p.link) || "#")}" target="_blank" rel="noopener noreferrer">链接 ↗</a>` : ""}
+            ${p.link ? `<a href="${API.esc(API.safeLink(p.link) || "#")}" target="_blank" rel="noopener noreferrer">${icon("arrow-square-out", 14)} 链接</a>` : ""}
           </div>
         `;
         if (p.status === "active") {
           const actions = document.createElement("div");
           actions.className = "row";
           const editBtn = document.createElement("button");
-          editBtn.textContent = "编辑内容";
+          editBtn.innerHTML = `${icon("pencil-simple", 14)} 编辑内容`;
           editBtn.addEventListener("click", () => editPost(p));
           const delBtn = document.createElement("button");
-          delBtn.textContent = "删除（不退款）";
+          delBtn.innerHTML = `${icon("trash", 14)} 删除（不退款）`;
           delBtn.addEventListener("click", () => deletePost(p));
           actions.appendChild(editBtn);
           actions.appendChild(delBtn);
@@ -132,6 +143,12 @@
       .catch((e) => alert("删除失败：" + e.message));
   }
 
+  const REASON = {
+    register: ["gift", "注册奖励"], invite: ["users-three", "邀请奖励"],
+    donation: ["hand-heart", "捐助确认"], publish: ["image-square", "发布扣费"],
+    daily: ["clock-counter-clockwise", "每日占用费"], bulk: ["gift", "管理员赠送"],
+  };
+
   let ledgerPage = 1;
   async function loadLedger() {
     try {
@@ -141,13 +158,10 @@
       for (const l of data.items) {
         const div = document.createElement("div");
         div.className = "ledger-item";
-        const reasonText = {
-          register: "注册奖励", invite: "邀请奖励", donation: "捐助确认",
-          publish: "发布扣费", daily: "每日占用费", bulk: "管理员赠送",
-        }[l.reason] || l.reason;
+        const [ic, label] = REASON[l.reason] || ["receipt", l.reason];
         div.innerHTML = `
+          <span class="reason">${icon(ic, 15)} ${label}</span>
           <span class="${l.amount > 0 ? "amount-pos" : "amount-neg"}">${l.amount > 0 ? "+" : ""}${l.amount}</span>
-          <span>${reasonText}</span>
           <span class="muted">余额 ${l.balanceAfter} · ${API.fmtTime(l.createdAt)}</span>
         `;
         box.appendChild(div);
@@ -171,9 +185,9 @@
         const div = document.createElement("div");
         div.className = "order-item";
         const statusTag =
-          o.status === "pending" ? '<span class="tag warn">待确认</span>'
-          : o.status === "confirmed" ? '<span class="tag ok">已确认</span>'
-          : '<span class="tag err">已取消</span>';
+          o.status === "pending" ? `<span class="tag warn">${icon("warning-circle", 14)} 待确认</span>`
+          : o.status === "confirmed" ? `<span class="tag ok">${icon("check-circle", 14)} 已确认</span>`
+          : `<span class="tag err">${icon("x-circle", 14)} 已取消</span>`;
         div.innerHTML = `
           ${statusTag}
           <span class="num">${(o.amountFen / 100).toFixed(2)} 元 → ${o.points} 积分</span>
@@ -181,7 +195,7 @@
         `;
         if (o.status === "pending") {
           const btn = document.createElement("button");
-          btn.textContent = "取消订单";
+          btn.innerHTML = `${icon("x", 14)} 取消订单`;
           btn.addEventListener("click", async () => {
             try {
               await API.post(`/api/me/orders/${encodeURIComponent(o.id)}/cancel`);
@@ -197,7 +211,7 @@
     }
   }
 
-  function bindEvents() {
+  function bindApp() {
     $("btn-logout").addEventListener("click", async () => {
       try { await API.post("/api/auth/logout"); } catch (_) {}
       location.href = "/";

@@ -8,10 +8,10 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">GeoPixel Wall</div>
+    <div class="brand"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</div>
     <nav>
-      <a href="/dashboard.html" id="nav-dashboard">我的后台</a>
-      <a href="/admin.html" id="nav-admin" hidden>管理后台</a>
+      <a href="/dashboard.html" id="nav-dashboard"><span class="ic" data-icon="user-circle" data-icon-size="16"></span> 我的后台</a>
+      <a href="/admin.html" id="nav-admin" hidden><span class="ic" data-icon="shield-check" data-icon-size="16"></span> 管理后台</a>
     </nav>
   </header>
 
@@ -22,23 +22,23 @@
         <div id="cells" class="cells"></div>
         <div id="selection" class="selection" hidden></div>
       </div>
-      <p class="hint">拖选矩形区域发布内容 · 触屏同样支持 · 详情请点击已占用区域</p>
+      <p class="hint"><span class="ic" data-icon="crosshair" data-icon-size="15"></span> 拖选矩形区域发布内容 · 触屏同样支持 · 点击已占用区域查看详情</p>
     </section>
 
     <aside class="panel" id="side-panel">
       <div id="panel-view">
-        <h3>像素墙</h3>
+        <h3><span class="ic" data-icon="squares-four"></span> 像素墙</h3>
         <p>选择一块空闲区域，展示你的文字、图片与链接。</p>
         <ul class="rules">
-          <li>发布费用 = 面积 × 每格价格（一次性）</li>
-          <li>每日占用费 = 面积 × 每格日价</li>
-          <li>余额不足时内容过期，位置释放给他人</li>
+          <li><span class="ic" data-icon="coins" data-icon-size="16"></span> 发布费用 = 面积 × 每格价格（一次性）</li>
+          <li><span class="ic" data-icon="clock-counter-clockwise" data-icon-size="16"></span> 每日占用费 = 面积 × 每格日价</li>
+          <li><span class="ic" data-icon="warning-circle" data-icon-size="16"></span> 余额不足时内容过期，位置释放给他人</li>
         </ul>
         <div id="occupied-info" class="occupied-info"></div>
       </div>
 
       <div id="panel-select" hidden>
-        <h3>发布内容</h3>
+        <h3><span class="ic" data-icon="plus"></span> 发布内容</h3>
         <div class="coords">
           <label>X <input type="number" id="in-x" min="0" max="99"></label>
           <label>Y <input type="number" id="in-y" min="0" max="99"></label>
@@ -51,20 +51,18 @@
         <label class="field">图片（可选，JPEG/PNG/WebP）<input type="file" id="in-image" accept="image/jpeg,image/png,image/webp"></label>
         <img id="img-preview" class="img-preview" alt="" hidden>
         <div class="actions">
-          <button id="btn-publish" class="primary">发布</button>
-          <button id="btn-cancel">取消</button>
+          <button id="btn-publish" class="primary"><span class="ic" data-icon="check-circle" data-icon-size="16"></span> 发布</button>
+          <button id="btn-cancel"><span class="ic" data-icon="x" data-icon-size="16"></span> 取消</button>
         </div>
         <p class="msg" id="publish-msg"></p>
-      </div>
-
-      <div id="panel-detail" hidden>
-        <h3>内容详情</h3>
-        <div id="detail-body"></div>
-        <button id="btn-close-detail">关闭</button>
       </div>
     </aside>
   </main>
 
+  <!-- 悬停浮层：显示内容块的完整信息 -->
+  <div id="cell-tooltip" class="cell-tooltip" hidden></div>
+
+  <script src="/assets/icons.js"></script>
   <script src="/assets/api.js"></script>
   <script src="/assets/wall.js"></script>
 </body>

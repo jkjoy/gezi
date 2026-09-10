@@ -8,45 +8,64 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><a href="/">GeoPixel Wall</a></div>
+    <div class="brand"><a href="/"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
     <nav>
-      <a href="/">像素墙</a>
+      <a href="/"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
       <span id="user-badge" class="user-badge"></span>
-      <button id="btn-logout" class="linklike">退出</button>
+      <button id="btn-logout" class="linklike" hidden><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
     </nav>
   </header>
 
-  <main class="dash-page">
+  <!-- 未登录：只显示登录/注册卡 -->
+  <main class="auth-page" id="auth-page">
+    <section class="card auth-card">
+      <h3><span class="ic" data-icon="user-circle"></span> <span id="auth-title">登录</span></h3>
+      <p class="muted">登录后即可在像素墙发布内容、管理账户与查看积分。</p>
+      <form id="auth-form" class="stack-form">
+        <label>用户名 <input name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
+        <label>密码 <input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+        <div class="actions">
+          <button class="primary" type="submit" id="auth-submit">登录</button>
+          <button type="button" id="auth-toggle" class="linklike">没有账户？注册</button>
+        </div>
+        <p class="msg" id="auth-msg"></p>
+      </form>
+    </section>
+  </main>
+
+  <!-- 登录后：账户与内容 -->
+  <main class="dash-page" id="app-content" hidden>
     <section class="card">
-      <h3>账户</h3>
-      <div id="account-info"><p>加载中…</p></div>
-      <h4>邀请链接</h4>
+      <h3><span class="ic" data-icon="user-circle"></span> 账户</h3>
+      <div id="account-info"><p class="muted">加载中…</p></div>
+      <h4><span class="ic" data-icon="gift" data-icon-size="16"></span> 邀请链接</h4>
       <p class="invite-box"><code id="invite-link">…</code></p>
       <p class="muted" id="invite-stats"></p>
     </section>
 
     <section class="card wide">
-      <h3>我的内容</h3>
-      <div id="my-posts"><p>加载中…</p></div>
+      <h3><span class="ic" data-icon="image-square"></span> 我的内容</h3>
+      <div id="my-posts"><p class="muted">加载中…</p></div>
     </section>
 
     <section class="card">
-      <h3>积分流水</h3>
-      <div id="ledger"><p>加载中…</p></div>
+      <h3><span class="ic" data-icon="receipt"></span> 积分流水</h3>
+      <div id="ledger"><p class="muted">加载中…</p></div>
       <button id="btn-ledger-more" hidden>加载更多</button>
     </section>
 
     <section class="card">
-      <h3>捐助</h3>
+      <h3><span class="ic" data-icon="hand-heart"></span> 捐助</h3>
       <p class="muted">捐助确认后按下单时的兑换率获得积分。</p>
       <form id="donate-form" class="donate-form">
         <label>金额（元）<input type="number" id="donate-yuan" min="1" step="0.01" required></label>
-        <button class="primary" type="submit">创建捐助订单</button>
+        <button class="primary" type="submit"><span class="ic" data-icon="plus" data-icon-size="16"></span> 创建捐助订单</button>
       </form>
-      <div id="orders"><p>加载中…</p></div>
+      <div id="orders"><p class="muted">加载中…</p></div>
     </section>
   </main>
 
+  <script src="/assets/icons.js"></script>
   <script src="/assets/api.js"></script>
   <script src="/assets/dashboard.js"></script>
 </body>

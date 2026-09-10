@@ -409,12 +409,12 @@ export function postView(row: PostRow, own: boolean): Record<string, unknown> {
 
 export async function handleWall(ctx: Ctx): Promise<Response> {
   const rows = await ctx.env.DB.prepare(
-    `SELECT p.id, p.x, p.y, p.width, p.height, p.text, p.created_at, u.object_key AS image_key
+    `SELECT p.id, p.x, p.y, p.width, p.height, p.text, p.link, p.created_at, u.object_key AS image_key
      FROM grid_posts p
      LEFT JOIN uploads u ON u.id = p.image_upload_id AND u.status = 'available'
      WHERE p.status = 'active'
      ORDER BY p.created_at ASC`
-  ).all<{ id: string; x: number; y: number; width: number; height: number; text: string; created_at: number; image_key: string | null }>();
+  ).all<{ id: string; x: number; y: number; width: number; height: number; text: string; link: string | null; created_at: number; image_key: string | null }>();
   return json({
     grid: GRID,
     cellPx: 10,
@@ -425,6 +425,7 @@ export async function handleWall(ctx: Ctx): Promise<Response> {
       width: r.width,
       height: r.height,
       text: r.text,
+      link: r.link, // 发布/编辑时已限制为 http/https；前端打开前再校验一次
       image: r.image_key ? `/api/images/${r.image_key}` : null,
       createdAt: r.created_at,
     })),

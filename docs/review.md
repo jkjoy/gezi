@@ -64,3 +64,34 @@
 - [ ] 预发布环境冒烟：迁移、绑定、Cron、图片访问
 - [ ] 性能预算制定与实测记录
 - [ ] 墙面查询分页/视口裁剪（优化级）
+
+## 2026-09-10 UI 交互迭代
+
+依据实际使用反馈完成三项交互调整与两项界面改进。
+
+### 变更
+
+- **墙面交互**（`public/assets/wall.js`、`style.css`）：
+  - 内容块文字按区域短边等比例缩放（7–72px），窗口 resize 时防抖重算；
+  - 悬停内容块显示浮层（完整文字、位置尺寸、链接，自动避让视口边缘）；
+  - 点击带链接的内容块直接 `window.open(url, "_blank", "noopener,noreferrer")`；无链接块不响应；
+  - 移除详情面板；`GET /api/posts/:id` 接口保留。
+- **后端**（`src/posts.ts`）：`GET /api/wall` 返回 `link` 字段（写入时已限制 http/https，前端打开前经 `API.safeLink` 二次校验）。
+- **图标**（新增 `public/assets/icons.js`）：内联 Phosphor Icons 28 枚（Cloudflare kumo 组件库的图标来源，MIT），无 CDN / 构建依赖。注：kumo 本体为 React + Base UI 组件库，与本项目无框架架构不兼容，故采用其图标集而非组件。
+- **用户后台**：未登录仅显示居中登录/注册卡（账户 / 我的内容 / 流水 / 捐助区块隐藏）；修复 `[hidden]` 属性被 `display: grid` 覆盖导致区块泄漏的问题（`[hidden] { display: none !important }`）。
+
+### 验证（本地 dev server + 浏览器实测）
+
+| 项 | 证据 |
+| --- | --- |
+| 文字等比 | 实测字号随区域单调递增：2×2=7.8px、4×3=11.7px、4×4=15.7px、12×5=19.6px、8×6=23.5px |
+| 悬停浮层 | 显示全文 / 位置尺寸 / 链接；鼠标跟随并避让视口边缘 |
+| 点击直达 | 带链接块触发 `window.open(..., noopener,noreferrer)`；无链接块不动作 |
+| 登录门控 | 未登录时 `app-content` 计算样式 `display:none`，仅登录卡可见 |
+| UTF-8 | 浏览器发布 `像素墙 🎨 你好世界`（中文+emoji）墙面 / 悬停 / 后台均正确；此前乱码确认为 curl/终端编码所致（服务端无缺陷） |
+| 回归 | `tsc --noEmit` 无错误；vitest 39/39 通过（新增 `/api/wall` link 字段断言）；`wrangler deploy --dry-run` 打包成功（80.17 KiB） |
+
+### 已知限制
+
+- 悬停浮层无触摸端等价交互（原移动端详情面板已移除），后续可为触摸端补充长按或点击展开。
+- `/api/wall` 仍全量返回，无分页（沿首版已知限制）。

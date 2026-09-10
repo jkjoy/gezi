@@ -58,11 +58,33 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
   position: absolute; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   font-size: clamp(8px, 1vw, 14px); color: #dfe8ff;
-  padding: 2px; cursor: pointer; text-align: center;
+  padding: 2px; cursor: default; text-align: center;
   border: 1px solid rgba(255,255,255,0.08);
-  word-break: break-all;
+}
+.cell-item.has-link { cursor: pointer; }
+.cell-item:hover { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 3; }
+.cell-item .cell-text {
+  line-height: 1.05; max-height: 100%; overflow: hidden;
+  word-break: break-word; white-space: pre-wrap; text-align: center;
 }
 .cell-item img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+
+/* 悬停浮层：内容完整信息 */
+.cell-tooltip {
+  position: fixed; z-index: 100; max-width: 320px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; color: var(--text);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55); pointer-events: none;
+}
+.cell-tooltip .tip-text {
+  font-weight: 600; margin-bottom: 6px; white-space: pre-wrap;
+  word-break: break-word; max-height: 160px; overflow: hidden;
+}
+.cell-tooltip .tip-meta { color: var(--muted); font-size: 12px; }
+.cell-tooltip .tip-link {
+  color: var(--accent); font-size: 12px; margin-top: 5px;
+  display: flex; align-items: center; gap: 5px; word-break: break-all;
+}
 .cell-item.tint-1 { background: #2b4a8f; }
 .cell-item.tint-2 { background: #6d3f9e; }
 .cell-item.tint-3 { background: #1f6e62; }
@@ -150,6 +172,44 @@ table.list td.num { font-variant-numeric: tabular-nums; }
 .post-item .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .amount-pos { color: var(--ok); }
 .amount-neg { color: var(--err); }
+
+/* hidden 属性必须优先于显式 display 布局，否则登录态切换无法隐藏区块 */
+[hidden] { display: none !important; }
+
+/* ---- Phosphor 内联图标（kumo 图标源）对齐 ---- */
+.ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+.ic svg { display: block; }
+.brand, .brand a { display: inline-flex; align-items: center; gap: 8px; }
+.topbar nav a { display: inline-flex; align-items: center; gap: 6px; }
+h3, h4 { display: flex; align-items: center; gap: 8px; }
+h3 .ic { color: var(--accent); }
+h4 .ic { color: var(--muted); }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.linklike { display: inline-flex; align-items: center; gap: 5px; }
+.tag { display: inline-flex; align-items: center; gap: 4px; }
+.user-badge { display: inline-flex; align-items: center; gap: 6px; }
+.user-badge .ic { color: var(--accent); }
+.hint { display: inline-flex; align-items: center; gap: 6px; }
+.rules li { list-style: none; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.rules { padding-left: 0; }
+.rules .ic { color: var(--accent); flex-shrink: 0; }
+.balance { display: flex; align-items: center; gap: 8px; }
+.balance .ic { color: var(--warn); }
+a .ic { vertical-align: middle; }
+
+/* ---- 未登录：登录/注册卡居中 ---- */
+.auth-page {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 8vh 20px 20px;
+}
+.auth-card { width: 100%; max-width: 420px; }
+.auth-card .actions { margin-top: 14px; align-items: center; }
+
+/* ---- 流水 / 订单项布局，让图标与文本对齐 ---- */
+.ledger-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ledger-item .reason { display: inline-flex; align-items: center; gap: 6px; min-width: 130px; }
+.ledger-item .reason .ic { color: var(--muted); }
+.order-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 @media (max-width: 720px) {
   .wall { touch-action: pan-zoom; cursor: default; }

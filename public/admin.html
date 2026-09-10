@@ -8,64 +8,65 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><a href="/">GeoPixel Wall</a></div>
+    <div class="brand"><a href="/"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
     <nav>
-      <a href="/">像素墙</a>
-      <a href="/dashboard.html">我的后台</a>
+      <a href="/"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
+      <a href="/dashboard.html"><span class="ic" data-icon="user-circle" data-icon-size="16"></span> 我的后台</a>
       <span id="user-badge" class="user-badge"></span>
-      <button id="btn-logout" class="linklike">退出</button>
+      <button id="btn-logout" class="linklike"><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
     </nav>
   </header>
 
   <main class="admin-page">
     <section class="card">
-      <h3>系统配置</h3>
+      <h3><span class="ic" data-icon="gear-six"></span> 系统配置</h3>
       <form id="settings-form"></form>
-      <div class="actions"><button class="primary" type="submit" form="settings-form">保存配置</button></div>
+      <div class="actions"><button class="primary" type="submit" form="settings-form"><span class="ic" data-icon="check-circle" data-icon-size="16"></span> 保存配置</button></div>
       <p class="msg" id="settings-msg"></p>
     </section>
 
     <section class="card">
-      <h3>用户</h3>
+      <h3><span class="ic" data-icon="users-three"></span> 用户</h3>
       <form id="user-search" class="inline-form">
         <input type="search" id="user-q" placeholder="搜索用户名">
-        <button type="submit">搜索</button>
+        <button type="submit"><span class="ic" data-icon="magnifying-glass" data-icon-size="16"></span> 搜索</button>
       </form>
       <div id="users"></div>
     </section>
 
     <section class="card">
-      <h3>批量赠送积分</h3>
+      <h3><span class="ic" data-icon="gift"></span> 批量赠送积分</h3>
       <form id="bulk-form" class="stack-form">
         <label>用户 ID（逗号或换行分隔）<textarea id="bulk-users" rows="3"></textarea></label>
         <label>每人积分 <input type="number" id="bulk-amount" min="1" required></label>
         <label>原因 <input type="text" id="bulk-reason" maxlength="200" required></label>
-        <button class="primary" type="submit">发放</button>
+        <button class="primary" type="submit"><span class="ic" data-icon="gift" data-icon-size="16"></span> 发放</button>
       </form>
       <div id="bulk-result"></div>
     </section>
 
     <section class="card">
-      <h3>捐助订单</h3>
-      <div id="orders"><p>加载中…</p></div>
+      <h3><span class="ic" data-icon="hand-heart"></span> 捐助订单</h3>
+      <div id="orders"><p class="muted">加载中…</p></div>
     </section>
 
     <section class="card">
-      <h3>运维</h3>
+      <h3><span class="ic" data-icon="gear-six"></span> 运维</h3>
       <div class="actions">
-        <button id="btn-run-settlement">手动日结</button>
-        <button id="btn-run-cleanup">清理孤儿图片</button>
+        <button id="btn-run-settlement"><span class="ic" data-icon="clock-counter-clockwise" data-icon-size="16"></span> 手动日结</button>
+        <button id="btn-run-cleanup"><span class="ic" data-icon="broom" data-icon-size="16"></span> 清理孤儿图片</button>
       </div>
       <pre id="ops-result" class="ops-result"></pre>
     </section>
 
     <section class="card wide">
-      <h3>操作记录</h3>
-      <div id="audit"><p>加载中…</p></div>
+      <h3><span class="ic" data-icon="scroll"></span> 操作记录</h3>
+      <div id="audit"><p class="muted">加载中…</p></div>
       <button id="btn-audit-more" hidden>加载更多</button>
     </section>
   </main>
 
+  <script src="/assets/icons.js"></script>
   <script src="/assets/api.js"></script>
   <script src="/assets/admin.js"></script>
 </body>
