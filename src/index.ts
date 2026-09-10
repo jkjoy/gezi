@@ -139,6 +139,24 @@ function matchRoute(method: string, pathname: string): { def: RouteDef; params: 
   return null;
 }
 
+/**
+ * 统一附加安全响应头。CSP 说明：
+ *  - img-src 允许 self 与 data:（前端 img-preview 使用 blob 预览时可放宽）
+ *  - script-src 仅 self（无内联脚本、无 CDN）
+ *  - connect-src 仅 self（API 同域）
+ */
+function withSecurityHeaders(res: Response): Response {
+  const headers = new Headers(res.headers);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  headers.set(
+    "content-security-policy",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  );
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 async function handleRequest(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const matched = matchRoute(req.method, url.pathname);
@@ -155,16 +173,16 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // 写接口校验同源来源，防护 CSRF
       if (req.method !== "GET" && req.method !== "HEAD") assertSameOrigin(req);
       const ctx: Ctx = { req, env, url, params: matched.params, user };
-      return await matched.def.handler(ctx);
+      return withSecurityHeaders(await matched.def.handler(ctx));
     } catch (e) {
-      if (e instanceof AppError) return json({ error: e.code, message: e.message }, e.status);
+      if (e instanceof AppError) return withSecurityHeaders(json({ error: e.code, message: e.message }, e.status));
       const path = url.pathname;
       if (!path.startsWith("/api/admin/")) console.error("request error:", path, e);
-      return json({ error: "internal", message: "服务器内部错误" }, 500);
+      return withSecurityHeaders(json({ error: "internal", message: "服务器内部错误" }, 500));
     }
   }
   if (url.pathname.startsWith("/api/")) {
-    return json({ error: "not_found", message: "接口不存在" }, 404);
+    return withSecurityHeaders(json({ error: "not_found", message: "接口不存在" }, 404));
   }
   // 其余路径交给静态资源
   if (env.ASSETS) return env.ASSETS.fetch(req);

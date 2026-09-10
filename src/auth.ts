@@ -78,6 +78,18 @@ export async function createSession(env: Env, userId: string): Promise<{ token: 
   const tokenHash = await sha256Hex(token);
   const now = nowMs();
   const expiresAt = now + settings.sessionTtlHours * 3600_000;
+  // 登录即清理：删除该用户已过期会话，并保留最近 9 个活跃会话，
+  // 防止反复登录导致 sessions 表无限增长（新的在第 10 个，插入后共 10 个）
+  await env.DB.prepare(
+    `DELETE FROM sessions WHERE user_id = ? AND (
+       expires_at < ? OR token_hash IN (
+         SELECT token_hash FROM sessions WHERE user_id = ? AND expires_at >= ?
+         ORDER BY created_at DESC LIMIT -1 OFFSET 9
+       )
+    )`
+  )
+    .bind(userId, now, userId, now)
+    .run();
   await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
     .bind(tokenHash, userId, now, expiresAt)
     .run();

@@ -16,12 +16,12 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "gezi"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "c153b69c-2618-4f64-80f6-ddba389f0d9e"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "UPLOADS"
-bucket_name = "gezi-uploads"
+bucket_name = "gezi"
 
 [triggers]
 # 00:00 UTC（北京时间 08:00）日结；01:00 UTC 过期会话/速率记录清理与孤儿图片清理

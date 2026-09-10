@@ -76,6 +76,27 @@ it("跨站写请求被 CSRF 防护拒绝", async () => {
   expect(((await cross.json()) as { error: string }).error).toBe("csrf");
 });
 
+it("安全响应头：API 响应含 CSP / X-Frame-Options / nosniff", async () => {
+  const res = await jsonReq("GET", "/api/health");
+  expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(res.headers.get("x-frame-options")).toBe("DENY");
+  expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+  expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+});
+
+it("会话数量有上限：反复登录不会无限积累", async () => {
+  const s = await register("sessioncap");
+  const id = s.user.id;
+  for (let i = 0; i < 14; i++) {
+    await jsonReq("POST", "/api/auth/login", { username: "sessioncap", password: "password123" });
+  }
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(id).first<{ n: number }>();
+  expect(row!.n).toBeLessThanOrEqual(10); // 每用户最多保留 10 个活跃会话
+  // 最早的会话仍可用（登出不删别人），当前会话也可用
+  const me = await jsonReq("GET", "/api/auth/me", undefined, s.cookie);
+  expect(me.status).toBe(200);
+});
+
 it("登录与注册有频率限制", async () => {
   let last: Response | undefined;
   for (let i = 0; i < 25; i++) {
