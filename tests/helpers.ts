@@ -150,6 +150,28 @@ export function tinyPng(): Uint8Array {
   return png.subarray(0, off + iend.length);
 }
 
+/** 生成最小合法两帧动画 GIF（8×8），用于 GIF 识别与动画往返测试 */
+export function tinyGif(): Uint8Array {
+  // GIF89a 签名 + 逻辑屏幕描述符（8x8, GCT 关闭）+ 两个图像描述符 + 结束符
+  const parts: number[] = [];
+  const push = (...bs: number[]) => parts.push(...bs);
+  const pushStr = (t: string) => { for (const c of t) parts.push(c.charCodeAt(0)); };
+  pushStr("GIF89a");
+  push(8, 0, 8, 0); // 宽高 小端
+  push(0x00, 0x00); // 无全局色表，背景 0，比例 0
+  // 第一帧：图像描述符 + 最小 LZW 数据
+  push(0x2c, 0, 0, 0, 0, 8, 0, 8, 0, 0x00); // 图像描述符（无局部色表）
+  push(0x02); // LZW 最小码长
+  push(0x02, 0x4c, 0x01); // 数据块（clear/end 码）
+  push(0x00); // 块结束
+  // 第二帧：图形控制扩展 + 图像描述符（动画帧）
+  push(0x21, 0xf9, 0x04, 0x00, 0x0a, 0x00, 0x00, 0x00); // GCE: 延时 10ms
+  push(0x2c, 0, 0, 0, 0, 8, 0, 8, 0, 0x00);
+  push(0x02, 0x4c, 0x01, 0x00);
+  push(0x3b); // 结束符
+  return new Uint8Array(parts);
+}
+
 export async function uploadImage(cookie: string, bytes: Uint8Array, filename = "t.png"): Promise<Response> {
   const fd = new FormData();
   fd.append("file", new File([bytes.slice().buffer as ArrayBuffer], filename, { type: "image/png" }));

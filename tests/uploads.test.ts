@@ -3,7 +3,7 @@
  */
 import { beforeEach, expect, it } from "vitest";
 import { env } from "cloudflare:test";
-import { jsonReq, publish, register, reqId, tinyPng, uploadImage } from "./helpers";
+import { jsonReq, publish, register, reqId, tinyGif, tinyPng, uploadImage } from "./helpers";
 
 beforeEach(async () => {
   await env.DB.prepare("UPDATE system_settings SET value = '2' WHERE key = 'publish_price_p'").run();
@@ -53,6 +53,34 @@ it("伪造 MIME、SVG、HTML 被拒绝", async () => {
   // 空文件
   const empty = await uploadImage(s.cookie, new Uint8Array(0), "empty.png");
   expect(empty.status).toBe(400);
+});
+
+it("GIF 识别与上传：两帧动画 GIF 可上传，发布后以 image/gif 访问", async () => {
+  const s = await register("gifuser");
+  const gif = tinyGif();
+  // 识别层：宽高来自逻辑屏幕描述符（小端 8×8）
+  const { detectImage } = await import("../src/uploads");
+  const info = detectImage(gif);
+  expect(info).toMatchObject({ mime: "image/gif", ext: "gif", width: 8, height: 8 });
+
+  // 上传层：完整字节流入库（含全部帧）
+  const up = await uploadImage(s.cookie, gif, "anim.gif");
+  expect(up.status).toBe(200);
+  const data = (await up.json()) as { id: string; url: string; mime: string; width: number; height: number };
+  expect(data.mime).toBe("image/gif");
+  expect(data.width).toBe(8);
+  expect(data.height).toBe(8);
+
+  // 发布 + 访问：Content-Type 为 image/gif（浏览器据此播放动画）
+  await env.DB.prepare("UPDATE users SET balance = balance + 100 WHERE id = ?").bind(s.user.id).run();
+  const pub = await publish(s.cookie, { requestId: reqId(), x: 0, y: 0, width: 2, height: 2, imageId: data.id });
+  expect(pub.status).toBe(200);
+  const img = await jsonReq("GET", data.url);
+  expect(img.status).toBe(200);
+  expect(img.headers.get("content-type")).toBe("image/gif");
+  expect(img.headers.get("x-content-type-options")).toBe("nosniff");
+  const body = new Uint8Array(await img.arrayBuffer());
+  expect(body.length).toBe(gif.length); // 完整字节流（非首帧截图），动画可播放
 });
 
 it("引用他人图片或不存在图片被拒绝", async () => {

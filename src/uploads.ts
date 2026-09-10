@@ -30,6 +30,16 @@ function be32(b: Uint8Array, off: number): number {
 /** 通过文件头识别图片类型与尺寸；无法识别一律拒绝 */
 export function detectImage(b: Uint8Array): ImageInfo | null {
   if (b.length < 12) return null;
+  // GIF: "GIF87a" / "GIF89a" + 逻辑屏幕描述符
+  // 头 6 字节是签名，随后 2 字节小端宽、2 字节小端高。
+  // 完整字节流原样存入 R2（含全部帧），动画在浏览器中正常播放。
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) {
+    if (b.length < 10) return null;
+    const width = b[6]! | (b[7]! << 8);
+    const height = b[8]! | (b[9]! << 8);
+    if (width < 1 || height < 1) return null;
+    return { mime: "image/gif", ext: "gif", width, height };
+  }
   // PNG
   if (
     b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 &&
@@ -172,7 +182,7 @@ function json(data: unknown, status = 200): Response {
 
 export async function handleImage(ctx: Ctx): Promise<Response> {
   const key = ctx.params.key;
-  if (!/^u\/[A-Za-z0-9]+\/[A-Za-z0-9]+\.(png|jpg|webp)$/.test(key)) {
+  if (!/^u\/[A-Za-z0-9]+\/[A-Za-z0-9]+\.(png|jpg|webp|gif)$/.test(key)) {
     return new Response("Not found", { status: 404 });
   }
   const row = await ctx.env.DB.prepare("SELECT mime, status FROM uploads WHERE object_key = ?")
