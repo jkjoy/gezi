@@ -1,6 +1,7 @@
 /* 像素墙交互：
  *  - 拖选发布（Pointer Events，支持反向拖选与取消）
- *  - 内容块文字按占用格子等比例放大
+ *  - 纯文字内容块自适应字号：canvas 测量折行，二分查找"能完整显示的最大字号"
+ *  - 发布面板：文字实时预览 + 推荐完整显示所需格数，一键应用推荐尺寸
  *  - 点击有链接的内容块直接打开链接（http/https，新窗口 noopener）
  *  - 鼠标悬停显示完整信息（全文、位置尺寸、链接）
  */
@@ -19,14 +20,134 @@
   const feePreview = $("fee-preview");
   const publishMsg = $("publish-msg");
   const tooltip = $("cell-tooltip");
+  const textFitBlock = $("text-fit-block");
+  const textFitInfo = $("text-fit-info");
+  const textPreview = $("text-preview");
+  const btnUseRec = $("btn-use-rec");
 
   let config = { publishPriceP: 2, dailyPriceD: 1, textMax: 500 };
   let occupied = new Set(); // "x,y"，仅用于交互提示
   let loggedIn = false;
   let uploadedImage = null;
   let currentSel = null;
+  let currentRec = null; // 当前推荐的区域 { w, h }
 
-  // ---- 初始化 ----
+  /* ---------------- 文字测量与自适应 ---------------- */
+  // 字体栈需与 .cell-item 的 CSS font-family 一致，保证测量与实际渲染同宽
+  const FONT_STACK = 'system-ui, "Segoe UI", "Microsoft YaHei", sans-serif';
+  const FIT_LINE_HEIGHT = 1.18; // 预估行高（略大于 CSS 实际 1.15，留安全余量）
+  const FIT_MIN_PX = 7;         // 字号下限：低于此值不可读
+  const FIT_MAX_PX = 72;        // 字号上限
+  const READABLE_PX = 12;       // 可读性参考字号（推荐尺寸按此目标计算）
+  const BOX_PAD = 6;            // 内容块内边距 + 边框预留（px）
+
+  const measureCtx = document.createElement("canvas").getContext("2d");
+
+  function isCJK(ch) {
+    const c = ch.codePointAt(0);
+    return (c >= 0x2e80 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xff00 && c <= 0xffef);
+  }
+
+  // 分词：CJK 逐字可断行；连续非 CJK（英文单词 + 空格）作为整体；换行符独立成词
+  function tokenizeText(text) {
+    const tokens = [];
+    let word = "";
+    for (const ch of text) {
+      if (ch === "\n") {
+        if (word) { tokens.push(word); word = ""; }
+        tokens.push("\n");
+      } else if (isCJK(ch)) {
+        if (word) { tokens.push(word); word = ""; }
+        tokens.push(ch);
+      } else {
+        word += ch;
+      }
+    }
+    if (word) tokens.push(word);
+    return tokens;
+  }
+
+  // 按最大宽度折行，返回行数组（近似浏览器断行：CJK 逐字、英文按词）
+  function wrapTokens(tokens, fs, maxW) {
+    measureCtx.font = fs + "px " + FONT_STACK;
+    const lines = [];
+    let line = "";
+    for (const t of tokens) {
+      if (t === "\n") { lines.push(line); line = ""; continue; }
+      if (line === "") { line = t; continue; }
+      if (measureCtx.measureText(line + t).width <= maxW) line += t;
+      else { lines.push(line); line = t; }
+    }
+    if (line !== "" || lines.length === 0) lines.push(line);
+    return lines;
+  }
+
+  // 二分查找能完整放进 box（宽高 px）的最大字号；最小字号仍放不下时 fits=false
+  function fitText(text, boxW, boxH) {
+    if (boxW <= 2 || boxH <= 2) return { size: FIT_MIN_PX, fits: false };
+    const tokens = tokenizeText(text);
+    const fits = (fs) => wrapTokens(tokens, fs, boxW).length * fs * FIT_LINE_HEIGHT <= boxH + 0.5;
+    if (!fits(FIT_MIN_PX)) return { size: FIT_MIN_PX, fits: false };
+    let lo = FIT_MIN_PX;
+    let hi = FIT_MAX_PX;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (fits(mid)) lo = mid; else hi = mid - 1;
+    }
+    return { size: lo, fits: true };
+  }
+
+  // 在目标字号下，推荐能完整显示的最小格数区域（长宽比限制 1:4，避免细长条）
+  function recommendSize(text, targetFs, cellPx) {
+    measureCtx.font = targetFs + "px " + FONT_STACK;
+    const oneLineW = Math.max(1, measureCtx.measureText(text.replace(/\n/g, "")).width);
+    const forced = (text.match(/\n/g) || []).length;
+    let best = null;
+    for (let w = 1; w <= GRID; w++) {
+      const boxW = w * cellPx - BOX_PAD;
+      if (boxW <= 0) continue;
+      const lines = Math.ceil(oneLineW / boxW) + forced;
+      const h = Math.max(1, Math.ceil((lines * targetFs * FIT_LINE_HEIGHT + BOX_PAD) / cellPx));
+      if (h > GRID) continue;
+      const area = w * h;
+      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h));
+      const score = area * (aspect > 4 ? 1000 : 1); // 细长区域加惩罚
+      if (!best || score < best.score) best = { w, h, score };
+    }
+    if (!best) return null;
+    // 行数近似可能比真实折行少一行：用 fitText 实测校验，不足则增高，
+    // 保证应用推荐后目标字号真的放得下（避免"推荐尺寸=当前尺寸"的无效循环）
+    const w = best.w;
+    let h = best.h;
+    while (h <= GRID) {
+      const fit = fitText(text, w * cellPx - BOX_PAD, h * cellPx - BOX_PAD);
+      if (fit.fits && fit.size >= targetFs) return { w, h };
+      h++;
+    }
+    return null;
+  }
+
+  function cellPxNow() {
+    return wall.clientWidth / GRID;
+  }
+
+  // 内容块：按当前渲染尺寸自适应字号，放不下时标记 cell-clip（悬停浮层可看全文）
+  function fitItem(item, cellPx) {
+    const text = item.dataset.text;
+    if (!text) return;
+    const w = Number(item.dataset.w) || 1;
+    const h = Number(item.dataset.h) || 1;
+    const fit = fitText(text, w * cellPx - BOX_PAD, h * cellPx - BOX_PAD);
+    item.style.fontSize = fit.size.toFixed(1) + "px";
+    item.classList.toggle("cell-clip", !fit.fits);
+  }
+
+  function fitAllItems() {
+    const cellPx = cellPxNow();
+    cellsEl.querySelectorAll(".cell-item[data-text]").forEach((el) => fitItem(el, cellPx));
+  }
+
+  /* ---------------- 初始化 ---------------- */
   async function init() {
     try {
       config = await API.get("/api/config");
@@ -58,22 +179,7 @@
     } catch (_) { /* 静默 */ }
   }
 
-  // ---- 文字等比例缩放 ----
-  function cellDisplayPx() {
-    return wall.clientWidth / GRID; // 每格当前显示像素
-  }
-  function fitFont(wCells, hCells) {
-    const px = cellDisplayPx();
-    const shortest = Math.min(wCells, hCells) * px; // 块短边像素
-    return Math.max(7, Math.min(72, shortest * 0.5));
-  }
-  function applyFont(item) {
-    const w = Number(item.dataset.w);
-    const h = Number(item.dataset.h);
-    if (w && h) item.style.fontSize = fitFont(w, h).toFixed(1) + "px";
-  }
-
-  // ---- 墙面渲染 ----
+  /* ---------------- 墙面渲染 ---------------- */
   async function loadWall() {
     try {
       const data = await API.get("/api/wall");
@@ -109,7 +215,7 @@
           span.className = "cell-text";
           span.textContent = p.text;
           item.appendChild(span);
-          applyFont(item);
+          item.dataset.text = p.text;
         }
 
         // 点击：有链接直接打开
@@ -125,6 +231,7 @@
 
         cellsEl.appendChild(item);
       }
+      fitAllItems();
       const free = GRID * GRID - occupied.size;
       occupiedInfo.textContent = `已占用 ${occupied.size} / ${GRID * GRID} 格，剩余 ${free} 格。`;
     } catch (e) {
@@ -138,7 +245,7 @@
     return Math.abs(h);
   }
 
-  // ---- 悬停浮层 ----
+  /* ---------------- 悬停浮层 ---------------- */
   function showTip(p) {
     const link = API.safeLink(p.link);
     tooltip.innerHTML = `
@@ -162,7 +269,7 @@
     tooltip.hidden = true;
   }
 
-  // ---- 拖选（Pointer Events）----
+  /* ---------------- 拖选（Pointer Events）---------------- */
   let dragging = false;
   let startCell = null;
 
@@ -218,12 +325,8 @@
     panelView.hidden = false;
   }
 
-  // ---- 发布面板 ----
-  function openPublishPanel() {
-    if (!loggedIn) {
-      location.href = "/dashboard.html";
-      return;
-    }
+  /* ---------------- 发布面板 ---------------- */
+  function updateOverlapWarning() {
     if (!currentSel) return;
     let overlap = 0;
     for (let dx = 0; dx < currentSel.w; dx++)
@@ -236,10 +339,19 @@
       publishMsg.textContent = "";
       publishMsg.className = "msg";
     }
+  }
+
+  function openPublishPanel() {
+    if (!loggedIn) {
+      location.href = "/dashboard.html";
+      return;
+    }
+    if (!currentSel) return;
     $("in-x").value = currentSel.x;
     $("in-y").value = currentSel.y;
     $("in-w").value = currentSel.w;
     $("in-h").value = currentSel.h;
+    updateOverlapWarning();
     updateFee();
     panelView.hidden = true;
     panelSelect.hidden = false;
@@ -265,8 +377,78 @@
     feePreview.textContent =
       `面积 ${sel.w}×${sel.h} = ${area} 格 · 发布费 ${area * config.publishPriceP}` +
       ` · 每日 ${area * config.dailyPriceD} 积分`;
+    updateTextFit();
   }
 
+  /* ---------------- 文字适配提示与预览 ---------------- */
+  function updateTextFit() {
+    const text = $("in-text").value;
+    if (!text.trim()) {
+      textFitBlock.hidden = true;
+      currentRec = null;
+      btnUseRec.hidden = true;
+      return;
+    }
+    textFitBlock.hidden = false;
+    const sel = readSel();
+    const cellPx = cellPxNow();
+    const boxW = sel.w * cellPx - BOX_PAD;
+    const boxH = sel.h * cellPx - BOX_PAD;
+    const fit = fitText(text, boxW, boxH);
+
+    let cls = "ok";
+    let msg = "";
+    let rec = null;
+    if (fit.fits && fit.size >= READABLE_PX) {
+      msg = `当前区域可完整显示，字号约 ${fit.size}px`;
+    } else if (fit.fits) {
+      rec = recommendSize(text, READABLE_PX, cellPx);
+      cls = "warn";
+      msg = rec
+        ? `可完整显示，但字号仅 ${fit.size}px（偏小）。推荐 ${rec.w}×${rec.h} 格（按当前窗口估算）`
+        : `可完整显示，但字号仅 ${fit.size}px（偏小）；推荐尺寸超出墙面，建议扩大区域`;
+    } else {
+      rec = recommendSize(text, READABLE_PX, cellPx);
+      cls = "err";
+      msg = rec
+        ? `文字较多，当前区域会显示不全。完整显示约需 ${rec.w}×${rec.h} 格（按当前窗口估算）`
+        : `文字过多，即使占满整墙也无法完整显示，请精简文字`;
+    }
+    textFitInfo.className = "text-fit " + cls;
+    textFitInfo.textContent = msg;
+    currentRec = rec;
+    btnUseRec.hidden = !rec;
+
+    renderPreview(text, boxW, boxH, fit);
+  }
+
+  // 等比缩放预览：布局比例与墙上完全一致（字号与宽高同乘 scale），小区域放大、大区域缩小
+  function renderPreview(text, boxW, boxH, fit) {
+    if (boxW <= 0 || boxH <= 0) {
+      textPreview.style.display = "none";
+      return;
+    }
+    textPreview.style.display = "flex";
+    const scale = Math.min(280 / boxW, 200 / boxH, 56 / Math.max(1, fit.size));
+    textPreview.style.width = Math.max(24, Math.round(boxW * scale)) + "px";
+    textPreview.style.height = Math.max(18, Math.round(boxH * scale)) + "px";
+    textPreview.style.fontSize = (fit.size * scale).toFixed(1) + "px";
+    textPreview.textContent = text;
+    textPreview.classList.toggle("clip", !fit.fits);
+  }
+
+  function applyRecommended() {
+    if (!currentRec) return;
+    // 应用推荐尺寸；若超出右/下边界则平移起点，保持区域完整
+    $("in-x").value = Math.max(0, Math.min(Number($("in-x").value) || 0, GRID - currentRec.w));
+    $("in-y").value = Math.max(0, Math.min(Number($("in-y").value) || 0, GRID - currentRec.h));
+    $("in-w").value = currentRec.w;
+    $("in-h").value = currentRec.h;
+    updateFee();
+    updateOverlapWarning(); // 扩大后的区域可能与其他内容重叠
+  }
+
+  /* ---------------- 图片上传 ---------------- */
   async function onUploadChange(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -289,6 +471,7 @@
     }
   }
 
+  /* ---------------- 发布 ---------------- */
   let publishInflight = false;
   let lastRequestId = null;
 
@@ -349,18 +532,22 @@
     }
   }
 
+  /* ---------------- 事件绑定 ---------------- */
   function bindEvents() {
     ["in-x", "in-y", "in-w", "in-h"].forEach((id) => $(id).addEventListener("input", updateFee));
+    $("in-text").addEventListener("input", updateTextFit);
     $("in-image").addEventListener("change", onUploadChange);
     $("btn-publish").addEventListener("click", onPublish);
     $("btn-cancel").addEventListener("click", cancelSelection);
+    $("btn-use-rec").addEventListener("click", applyRecommended);
 
-    // 窗口尺寸变化时重算所有内容块文字大小（等比例保持）
+    // 窗口尺寸变化：重算所有内容块字号；面板打开时同步更新推荐信息
     let resizeTimer;
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        cellsEl.querySelectorAll(".cell-item").forEach(applyFont);
+        fitAllItems();
+        if (!panelSelect.hidden) updateTextFit();
       }, 150);
     });
   }

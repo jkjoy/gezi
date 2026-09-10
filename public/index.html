@@ -47,6 +47,12 @@
         </div>
         <p class="fee-preview" id="fee-preview"></p>
         <label class="field">文字（可选）<textarea id="in-text" maxlength="500" rows="3"></textarea></label>
+        <div id="text-fit-block" class="text-fit-block" hidden>
+          <p class="text-fit" id="text-fit-info"></p>
+          <button id="btn-use-rec" type="button" class="linklike" hidden>使用推荐尺寸</button>
+          <div class="text-preview-caption">文字预览（等比缩放，与墙面布局一致）</div>
+          <div id="text-preview" class="text-preview"></div>
+        </div>
         <label class="field">链接（可选，http/https）<input type="url" id="in-link" maxlength="300" placeholder="https://example.com"></label>
         <label class="field">图片（可选，JPEG/PNG/WebP）<input type="file" id="in-image" accept="image/jpeg,image/png,image/webp"></label>
         <img id="img-preview" class="img-preview" alt="" hidden>

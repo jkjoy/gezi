@@ -64,10 +64,30 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
 .cell-item.has-link { cursor: pointer; }
 .cell-item:hover { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 3; }
 .cell-item .cell-text {
-  line-height: 1.05; max-height: 100%; overflow: hidden;
+  line-height: 1.15; max-height: 100%; overflow: hidden;
   word-break: break-word; white-space: pre-wrap; text-align: center;
 }
 .cell-item img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+/* 文字放不下时右下角显示省略标记（悬停浮层可看全文） */
+.cell-item.cell-clip::after {
+  content: "EF"; position: absolute; right: 2px; bottom: 0;
+  font-size: 10px; line-height: 1; color: rgba(255,255,255,.8); pointer-events: none;
+}
+
+/* 发布面板：文字适配提示与等比预览 */
+.text-fit-block { margin-top: 6px; }
+.text-fit { margin: 4px 0; font-size: 13px; }
+.text-fit.ok { color: var(--ok); }
+.text-fit.warn { color: var(--warn); }
+.text-fit.err { color: var(--err); }
+#btn-use-rec { margin: 2px 0 4px; }
+.text-preview-caption { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.text-preview {
+  margin: 4px auto 0; background: #10192b; border: 1px dashed var(--line);
+  border-radius: 6px; overflow: hidden; display: flex;
+  align-items: center; justify-content: center;
+  white-space: pre-wrap; word-break: break-word; line-height: 1.15; color: #dfe8ff;
+}
 
 /* 悬停浮层：内容完整信息 */
 .cell-tooltip {
