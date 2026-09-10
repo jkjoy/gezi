@@ -141,3 +141,29 @@
 4. **fitAllItems 同步循环**（优化）：满墙 10,000 块时文字测量可能阻塞主线程百毫秒级。可分帧（requestAnimationFrame 批处理）。
 5. **触摸端无悬停等价交互**（优化，已知）：悬停浮层为桌面交互；移动端可长按显示。
 6. **协调租约等待参数**（优化）：`acquireCoord` 重试约 4.4s 后放弃（503），而租约 TTL 15s——等待方过早放弃。可延长重试窗口或缩短 TTL；当前 503 语义安全（客户端可重试）。
+
+## 2026-09-10 管理员规则修订：首个注册用户自动成为管理员
+
+应用户要求修订管理员产生规则（覆盖本 README 初版"不采用首注册自动成为管理员"的设计）。
+
+### 变更
+
+- `src/auth.ts` `createUser`：`role === "user"` 时在同事务追加 `UPDATE users SET role='admin' WHERE id=? AND NOT EXISTS (SELECT 1 FROM users WHERE role='admin')`——判定与插入原子，并发注册下 SQLite 写串行化保证只有先提交者成为管理员；已有管理员后永不触发。
+- 注册响应新增 `message` 字段：首个用户提示"你是本站首位注册用户，已自动成为管理员"。
+- `public/assets/dashboard.js`：登录后顶栏徽章显示管理员标签（盾牌图标）；注册提示先展示 1.8s 再刷新页面。
+- `POST /api/admin/init` 保留为备用入口，与首注册提升互斥（先到者生效）。
+
+### 测试
+
+- 改写原"首注册不能成为管理员"测试为行为验证：首注册 `role=admin` 且可访问管理接口（仍获注册奖励）；第二/三个用户为 `user`；注册请求携带 `role` 字段无效。
+- 新增"已有管理员时首注册不再提升"（先 initAdmin 再注册）。
+- `initAdmin` helper 幂等化（入口已关闭时直接登录）；`points.test.ts` beforeEach 改为先清用户再 initAdmin，阻断"测试内首个注册用户意外成为管理员"的前提污染。
+- 42/42 通过；tsc、dry-run 通过。
+
+### 本地环境事件记录
+
+排查 dev server 全接口 500 时发现：在 dev server 运行期间执行 `wrangler d1 execute --local` 会在同一 persistence 目录生成**另一个空库实例**，server 后续绑定到空库导致 "no such table"。已将原库（2 用户、6 内容、144 格、8 流水）逐表迁移至 server 实际实例，并按注册顺序把本地首个用户 `demo` 提升为管理员。教训（已记入已知限制）：**本地开发期间不要混用 `wrangler d1 execute --local` 与运行中的 dev server**，需要手工改数据时先停 server。
+
+### 已知限制（修订后）
+
+- 首注册自动管理员在公开部署场景存在被抢注风险：任何人先注册即获得管理员。部署到公网后建议第一时间完成注册占位，或改回受控初始化流程（代码已保留，二者互斥）。

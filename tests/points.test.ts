@@ -6,8 +6,15 @@ import { env, SELF } from "cloudflare:test";
 import { getUserRow, initAdmin, jsonReq, ledgerSum, login, register } from "./helpers";
 
 beforeEach(async () => {
-  await env.DB.prepare("UPDATE system_settings SET value = '0' WHERE key = 'admin_initialized'").run();
-  await env.DB.prepare("DELETE FROM users WHERE role = 'admin'").run();
+  // 注意：不能只删管理员——“首个注册用户自动成为管理员”规则会让本文件
+  // 第一个注册的用户（如 inv1）意外成为 admin，破坏各测试前提。
+  // 因此先清空用户，再 initAdmin 建立明确的管理员，阻断自动提升路径。
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions"),
+    env.DB.prepare("DELETE FROM users"),
+    env.DB.prepare("UPDATE system_settings SET value = '0' WHERE key = 'admin_initialized'"),
+  ]);
+  await initAdmin();
   // 默认邀请配置：奖励 20，每日上限 5
   await env.DB.batch([
     env.DB.prepare("UPDATE system_settings SET value = '20' WHERE key = 'invite_reward'"),

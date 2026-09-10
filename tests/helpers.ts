@@ -52,7 +52,10 @@ export async function initAdmin(username = "rootadmin", password = "admin-passwo
     username,
     password,
   });
-  if (res.status !== 200) throw new Error(`admin init failed: ${res.status} ${await res.text()}`);
+  // 幂等：初始化入口已关闭（或同名管理员已存在）时直接登录复用
+  if (res.status !== 200 && res.status !== 403) {
+    throw new Error(`admin init failed: ${res.status} ${await res.text()}`);
+  }
   return login(username, password);
 }
 

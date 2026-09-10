@@ -156,6 +156,17 @@ export async function createUser(env: Env, username: string, password: string, r
         ).bind(uid, reward, "注册奖励", now, uid)
       );
     }
+    if (role === "user") {
+      // 首个注册用户自动成为管理员（2026-09-10 修订）：
+      // 仅当当前不存在任何管理员时提升，判定与插入同事务，并发注册下 SQLite
+      // 写串行化保证只有先提交的那个成为管理员；管理员初始化入口建号后此条件不再命中。
+      stmts.push(
+        env.DB.prepare(
+          `UPDATE users SET role = 'admin' WHERE id = ?
+           AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`
+        ).bind(uid)
+      );
+    }
     try {
       await env.DB.batch(stmts);
       return uid;
@@ -190,8 +201,10 @@ export async function handleRegister(ctx: Ctx): Promise<Response> {
   const uid = await createUser(ctx.env, username, password, "user");
   const { token, maxAgeSec } = await createSession(ctx.env, uid);
   const user = await mustGetUser(ctx.env, uid);
+  // 首个注册用户自动成为管理员：响应中明确告知，避免用户不知道自己的角色
+  const message = user.role === "admin" ? "注册成功。你是本站首位注册用户，已自动成为管理员。" : undefined;
   return json(
-    { user: publicUser(user) },
+    { user: publicUser(user), message },
     200,
     { "set-cookie": sessionCookie(token, maxAgeSec, ctx.url.protocol === "https:") }
   );

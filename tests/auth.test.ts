@@ -33,14 +33,33 @@ it("错误密码不能登录，登出后 Cookie 失效", async () => {
   expect(((await me.json()) as { user: unknown }).user).toBeNull();
 });
 
-it("普通用户抢先注册不能成为管理员，伪造角色字段无效", async () => {
-  const s = await register("earlybird");
-  // 直接调用管理员接口应被拒绝
-  const res = await jsonReq("GET", "/api/admin/settings", undefined, s.cookie);
-  expect(res.status).toBe(403);
-  // 数据库层面伪造角色
-  await env.DB.prepare("UPDATE users SET role = 'admin' WHERE id = ?").bind(s.user.id).run();
-  // （此处仅验证请求层拦截；角色由受控流程管理）
+it("首个注册用户自动成为管理员，后续注册用户为普通角色", async () => {
+  const first = await register("firstuser");
+  expect(first.user.role).toBe("admin");
+  // 首个用户仍获得注册奖励（正常注册流程）
+  expect(first.user.balance).toBe(200);
+  // 首个用户可以访问管理员接口
+  const adminOk = await jsonReq("GET", "/api/admin/settings", undefined, first.cookie);
+  expect(adminOk.status).toBe(200);
+
+  // 第二个及之后的注册用户是普通角色，无管理员权限
+  const second = await register("seconduser");
+  expect(second.user.role).toBe("user");
+  const denied = await jsonReq("GET", "/api/admin/settings", undefined, second.cookie);
+  expect(denied.status).toBe(403);
+  // 注册请求不携带角色字段，无法自行指定
+  const forged = await jsonReq("POST", "/api/auth/register", { username: "thirduser", password: "password123", role: "admin" });
+  expect(forged.status).toBe(200);
+  const third = (await forged.json()) as { user: { role: string } };
+  expect(third.user.role).toBe("user");
+});
+
+it("已有管理员时，首个注册用户不再自动提升", async () => {
+  // 通过受控初始化先建管理员
+  await initAdmin("seedadmin", "admin-password-123");
+  // 之后注册的第一个用户保持普通角色
+  const s = await register("latefirst");
+  expect(s.user.role).toBe("user");
 });
 
 it("管理员初始化：错误令牌拒绝、成功一次后入口关闭", async () => {

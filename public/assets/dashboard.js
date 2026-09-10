@@ -19,7 +19,10 @@
     $("auth-page").hidden = true;
     $("app-content").hidden = false;
     $("btn-logout").hidden = false;
-    $("user-badge").innerHTML = `${icon("user-circle")} ${API.esc(me.user.username)} · ${me.user.balance} 积分`;
+    const roleTag = me.user.role === "admin"
+      ? `<span class="tag ok">${icon("shield-check")} 管理员</span>`
+      : "";
+    $("user-badge").innerHTML = `${icon("user-circle")} ${API.esc(me.user.username)} ${roleTag} · ${me.user.balance} 积分`;
     bindApp();
     loadAccount();
     loadMyPosts();
@@ -51,10 +54,16 @@
       const fd = new FormData(form);
       submit.disabled = true;
       try {
-        await API.post(`/api/auth/${mode}`, {
+        const resp = await API.post(`/api/auth/${mode}`, {
           username: String(fd.get("username") || ""),
           password: String(fd.get("password") || ""),
         });
+        if (resp.message) {
+          // 管理员提示先亮出来再刷新，用户能看到身份说明
+          $("auth-msg").className = "msg ok";
+          $("auth-msg").textContent = resp.message;
+          await new Promise((r) => setTimeout(r, 1800));
+        }
         location.reload();
       } catch (err) {
         $("auth-msg").className = "msg err";
