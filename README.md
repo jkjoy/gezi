@@ -107,16 +107,20 @@ gezi/
 │   ├── billing.ts              # 可重试的日结与中断补算
 │   ├── uploads.ts              # 图片校验（含 GIF）、R2 存取、孤儿清理
 │   └── admin.ts                # 一次性初始化、配置、批量赠送、捐助确认、日结、清理、审计
+├── styles/
+│   └── app.css                 # Tailwind 源文件：@theme 品牌令牌 + base 层 + 组件层
 ├── public/
 │   ├── index.html              # 公共像素墙
 │   ├── dashboard.html          # 用户后台
 │   ├── admin.html              # 管理后台
 │   ├── 404.html
 │   └── assets/
-│       ├── style.css
+│       ├── app.css             # Tailwind 构建产物（需提交；由 npm run build:css 生成）
+│       ├── wall.css            # 像素墙专属：渐变网格、绝对定位格子、悬停浮层
 │       ├── api.js              # 同域 API 封装 + 转义 / 安全链接工具
 │       ├── icons.js            # 内联 Phosphor 图标
-│       ├── modal.js            # 模态窗组件（Modal.open / Modal.confirm）
+│       ├── modal.js            # 模态窗组件（Modal.open / confirm / alert）
+│       ├── tabs.js             # 后台标签页导航（ARIA tabs + hash 深链 + tab:show 懒加载）
 │       ├── wall.js             # 像素墙交互、拖选发布、文字自适应
 │       ├── dashboard.js        # 用户后台
 │       └── admin.js            # 管理后台
@@ -217,7 +221,8 @@ POST /api/admin/init                        一次性初始化（备用入口，
 GET  /api/admin/settings                    读取配置
 PUT  /api/admin/settings                    更新配置
 GET  /api/admin/users                       搜索用户
-POST /api/admin/bulk-grants                 批量赠送积分
+POST /api/admin/users/preview               按条件预览命中用户（只读，不发放）
+POST /api/admin/bulk-grants                 批量赠送积分（userIds 或 filter）
 GET  /api/admin/bulk-grants                 批次结果查询
 POST /api/admin/bulk-grants/:batch/retry    重试批次
 GET  /api/admin/donation-orders             捐助订单列表
@@ -246,8 +251,8 @@ cp .dev.vars.example .dev.vars
 # 3. 初始化本地 D1
 npm run db:migrate:local        # = wrangler d1 migrations apply gezi --local
 
-# 4. 启动本地开发服务器
-npm run dev                     # = wrangler dev
+# 4. 启动本地开发服务器（会先构建 Tailwind 产物）
+npm run dev                     # = npm run build:css && wrangler dev
 ```
 
 启动后访问 `http://127.0.0.1:8787`（或 wrangler 指定端口）。本地使用 Wrangler 模拟的 D1 / R2 数据。
@@ -256,10 +261,20 @@ npm run dev                     # = wrangler dev
 
 其他脚本：
 ```bash
+npm run build:css  # Tailwind 构建：styles/app.css → public/assets/app.css（压缩）
+npm run watch:css  # 改样式时的监听模式，配合另一个终端的 wrangler dev
 npm run check      # TypeScript 类型检查（tsc --noEmit）
 npm test           # 运行全部集成测试（vitest run）
 npm run test:watch # 监听模式
 ```
+
+### 样式构建
+
+前端样式用 Tailwind CSS v4。源文件是 [`styles/app.css`](styles/app.css)，其中 `@theme` 定义品牌令牌（`--color-panel`、`--color-accent` 等），Tailwind 同时据此生成 utility 并输出到 `:root`，因此 `public/assets/wall.css` 可以直接 `var(--color-*)` 复用同一套值。
+
+> **产物必须提交。** `public/assets/app.css` 是构建输出，但 Workers Static Assets 直接分发 `public/`，部署链路上没有构建钩子。`npm run dev` 与 `npm run deploy` 都已前置 `build:css`；如果手工改了 `styles/app.css` 或新增了 utility class，记得重新构建并提交产物。
+
+> **CSP 约束。** 站点响应头为 `script-src 'self'; style-src 'self'`（见 `src/index.ts`），不允许 CDN 与内联样式。Tailwind 产物是同源静态文件，满足该策略；但这也意味着**不能**改用 Tailwind Play CDN 或任何运行时注入 `<style>` 的方案。
 
 ---
 
@@ -327,6 +342,32 @@ npx wrangler d1 execute gezi --remote \
 | `session_ttl_hours` | 168 | 会话有效期（7 天） |
 
 > 动画 GIF 体积普遍偏大，若默认 2 MiB 不够，可将 `upload_max_bytes` 调高（上限 20 MiB）。
+
+---
+
+## 批量赠送（按条件筛选）
+
+后台「批量赠送」支持按条件圈定发放对象，不必手工收集用户 ID。可用条件：
+
+| 条件 | 字段 | 说明 |
+| --- | --- | --- |
+| 角色 | `role` | `user` / `admin`，留空为全部 |
+| 余额区间 | `balanceMin` / `balanceMax` | 含边界 |
+| 注册日期区间 | `createdFrom` / `createdTo` | `YYYY-MM-DD`，按 UTC 自然日，含结束当日 |
+| 用户名关键词 | `q` | 不区分大小写的子串匹配 |
+
+安全约束（由后端强制，不依赖前端）：
+
+* **条件全空会被拒绝**——空条件等价于“全部用户”，不设防就是一次误操作全员发分；
+* **单批上限 500 人**，命中超过上限直接报错，**不做静默截断**，避免“以为发了 800 人实际只发了 500 人”；
+* 命中为空同样报错，不会产生空批次；
+* **条件在发放时于服务端重新解析**，而不是沿用前端的预览结果，因此发出的人与当时条件完全一致；
+* 筛选条件连同人数、金额、原因一并写入审计日志，事后可还原“这批分是按什么条件发的”；
+* 发放对象的每个用户仍由 `(batch_id, user_id)` 主键去重，失败项可安全重试。
+
+预览接口 `POST /api/admin/users/preview` 是只读的，返回 `count`、`exceedsLimit` 与最多 20 条样本，供发放前核对人数。
+
+`POST /api/admin/bulk-grants` 同时接受 `userIds`（显式 ID 列表，1-500 个）与 `filter`（筛选条件），两者互斥、必居其一。UI 只用 `filter`；`userIds` 保留以兼容既有调用。
 
 ---
 

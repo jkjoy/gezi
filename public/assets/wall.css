@@ -1,0 +1,89 @@
+/*
+ * wall.css — 像素墙页（index.html）专属。
+ *
+ * 只保留“必须是真 CSS”的部分：渐变网格背景、由 JS 定位的绝对定位格子、
+ * ::after 伪元素、悬停浮层、等比文字预览。页面骨架与表单一律写 Tailwind
+ * utility，不再重复定义。
+ *
+ * 配色变量来自 styles/app.css 的 @theme（Tailwind 会输出到 :root），
+ * 因此本文件与 utility 共用同一套令牌。
+ */
+
+.wall {
+  position: relative; width: 100%; aspect-ratio: 1/1;
+  background: #10192b;
+  border: 1px solid var(--color-line); border-radius: 8px;
+  overflow: hidden; touch-action: none; cursor: crosshair; outline: none;
+}
+.grid-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(140,160,200,0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(140,160,200,0.10) 1px, transparent 1px);
+  background-size: 1% 1%; /* JS 按格子尺寸重设 */
+}
+.cells { position: absolute; inset: 0; }
+.selection {
+  position: absolute; background: rgba(79,140,255,0.25);
+  border: 2px solid var(--color-accent); z-index: 5; pointer-events: none;
+}
+
+/* ---- 内容格子（位置与尺寸由 wall.js 写入 style 属性外的 CSSOM）---- */
+.cell-item {
+  position: absolute; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(8px, 1vw, 14px); color: #dfe8ff;
+  padding: 2px; cursor: default; text-align: center;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.cell-item.has-link { cursor: pointer; }
+.cell-item:hover { outline: 2px solid var(--color-accent); outline-offset: -1px; z-index: 3; }
+.cell-item .cell-text {
+  line-height: 1.15; max-height: 100%; overflow: hidden;
+  word-break: break-word; white-space: pre-wrap; text-align: center;
+}
+.cell-item img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+/* 文字放不下时右下角显示省略标记（悬停浮层可看全文）。
+   用 CSS 转义写 U+2026，避免字面量省略号再次被编码破坏。 */
+.cell-item.cell-clip::after {
+  content: "\2026"; position: absolute; right: 2px; bottom: 0;
+  font-size: 10px; line-height: 1; color: rgba(255,255,255,.8); pointer-events: none;
+}
+.cell-item.tint-1 { background: #2b4a8f; }
+.cell-item.tint-2 { background: #6d3f9e; }
+.cell-item.tint-3 { background: #1f6e62; }
+.cell-item.tint-4 { background: #8a5a24; }
+.cell-item.tint-5 { background: #843a52; }
+
+/* ---- 悬停浮层：内容完整信息 ---- */
+.cell-tooltip {
+  position: fixed; z-index: 100; max-width: 320px;
+  background: var(--color-panel); border: 1px solid var(--color-line); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; color: var(--color-ink);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55); pointer-events: none;
+}
+.cell-tooltip .tip-text {
+  font-weight: 600; margin-bottom: 6px; white-space: pre-wrap;
+  word-break: break-word; max-height: 160px; overflow: hidden;
+}
+.cell-tooltip .tip-meta { color: var(--color-muted); font-size: 12px; }
+.cell-tooltip .tip-link {
+  color: var(--color-accent); font-size: 12px; margin-top: 5px;
+  display: flex; align-items: center; gap: 5px; word-break: break-all;
+}
+
+/* ---- 发布面板：文字适配提示与等比预览（class 由 wall.js 切换）---- */
+.text-fit { margin: 4px 0; font-size: 13px; }
+.text-fit.ok { color: var(--color-ok); }
+.text-fit.warn { color: var(--color-warn); }
+.text-fit.err { color: var(--color-err); }
+.text-preview {
+  margin: 4px auto 0; background: #10192b;
+  border: 1px dashed var(--color-line); border-radius: 6px;
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+  white-space: pre-wrap; word-break: break-word; line-height: 1.15; color: #dfe8ff;
+}
+
+@media (max-width: 720px) {
+  .wall { touch-action: pan-zoom; cursor: default; }
+}

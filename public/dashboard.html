@@ -4,69 +4,91 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>我的后台 — GeoPixel Wall</title>
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><a href="/"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
-    <nav>
-      <a href="/"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
-      <span id="user-badge" class="user-badge"></span>
-      <button id="btn-logout" class="linklike" hidden><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
-    </nav>
-  </header>
+  <!-- 顶栏与标签栏同属一个 sticky 容器：两者一起吸顶，不必为标签栏算 top 偏移 -->
+  <div class="sticky top-0 z-10 bg-bg">
+    <header class="flex items-center justify-between border-b border-line bg-panel px-5 py-3">
+      <div class="inline-flex items-center gap-2 font-bold tracking-wide"><a href="/" class="inline-flex items-center gap-2 text-ink hover:no-underline"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
+      <nav class="flex items-center gap-4">
+        <a href="/" class="inline-flex items-center gap-1.5"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
+        <span id="user-badge" class="inline-flex items-center gap-1.5 text-muted"></span>
+        <button id="btn-logout" class="btn-link" hidden><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
+      </nav>
+    </header>
+
+    <div id="tabbar" class="border-b border-line" hidden>
+      <div class="mx-auto flex max-w-[1400px] gap-1 overflow-x-auto px-5" role="tablist" aria-label="后台导航">
+        <button type="button" role="tab" class="tab" id="tab-account" aria-controls="panel-account" aria-selected="true"><span class="ic" data-icon="user-circle" data-icon-size="16"></span> 账户</button>
+        <button type="button" role="tab" class="tab" id="tab-posts" aria-controls="panel-posts" aria-selected="false"><span class="ic" data-icon="image-square" data-icon-size="16"></span> 我的内容</button>
+        <button type="button" role="tab" class="tab" id="tab-ledger" aria-controls="panel-ledger" aria-selected="false"><span class="ic" data-icon="receipt" data-icon-size="16"></span> 积分流水</button>
+        <button type="button" role="tab" class="tab" id="tab-donate" aria-controls="panel-donate" aria-selected="false"><span class="ic" data-icon="hand-heart" data-icon-size="16"></span> 捐助</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 未登录：只显示登录/注册卡 -->
-  <main class="auth-page" id="auth-page">
-    <section class="card auth-card">
-      <h3><span class="ic" data-icon="user-circle"></span> <span id="auth-title">登录</span></h3>
-      <p class="muted">登录后即可在像素墙发布内容、管理账户与查看积分。</p>
-      <form id="auth-form" class="stack-form">
-        <label>用户名 <input name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
-        <label>密码 <input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
-        <div class="actions">
-          <button class="primary" type="submit" id="auth-submit">登录</button>
-          <button type="button" id="auth-toggle" class="linklike">没有账户？注册</button>
+  <main class="flex items-start justify-center px-5 pt-[8vh] pb-5" id="auth-page">
+    <section class="card w-full max-w-[420px]">
+      <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="user-circle"></span> <span id="auth-title">登录</span></h3>
+      <p class="muted mb-3">登录后即可在像素墙发布内容、管理账户与查看积分。</p>
+      <form id="auth-form">
+        <label class="mb-2.5 block text-[13px] text-muted">用户名 <input name="username" autocomplete="username" required minlength="3" maxlength="24" class="mt-1"></label>
+        <label class="mb-2.5 block text-[13px] text-muted">密码 <input name="password" type="password" autocomplete="current-password" required minlength="8" class="mt-1"></label>
+        <div class="mt-3.5 flex items-center gap-2.5">
+          <button class="btn btn-primary" type="submit" id="auth-submit">登录</button>
+          <button type="button" id="auth-toggle" class="btn-link">没有账户？注册</button>
         </div>
-        <p class="msg" id="auth-msg"></p>
+        <p class="msg mt-1" id="auth-msg"></p>
       </form>
     </section>
   </main>
 
-  <!-- 登录后：账户与内容 -->
-  <main class="dash-page" id="app-content" hidden>
-    <section class="card">
-      <h3><span class="ic" data-icon="user-circle"></span> 账户</h3>
-      <div id="account-info"><p class="muted">加载中…</p></div>
-      <h4><span class="ic" data-icon="gift" data-icon-size="16"></span> 邀请链接</h4>
-      <p class="invite-box"><code id="invite-link">…</code></p>
-      <p class="muted" id="invite-stats"></p>
+  <!-- 登录后：标签页面板 -->
+  <main class="mx-auto max-w-[1400px] p-5" id="app-content" hidden>
+    <section role="tabpanel" id="panel-account" aria-labelledby="tab-account" tabindex="0">
+      <div class="card max-w-2xl">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="user-circle"></span> 账户</h3>
+        <div id="account-info"><p class="muted">加载中…</p></div>
+        <h4 class="mt-4 mb-1.5 flex items-center gap-2 text-sm font-semibold"><span class="ic text-muted" data-icon="gift" data-icon-size="16"></span> 邀请链接</h4>
+        <p class="rounded-md bg-panel-2 px-2.5 py-2 [overflow-wrap:anywhere]"><code id="invite-link">…</code></p>
+        <p class="muted mt-2" id="invite-stats"></p>
+      </div>
     </section>
 
-    <section class="card wide">
-      <h3><span class="ic" data-icon="image-square"></span> 我的内容</h3>
-      <div id="my-posts"><p class="muted">加载中…</p></div>
+    <section role="tabpanel" id="panel-posts" aria-labelledby="tab-posts" tabindex="0" hidden>
+      <div class="card">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="image-square"></span> 我的内容</h3>
+        <div id="my-posts"><p class="muted">加载中…</p></div>
+      </div>
     </section>
 
-    <section class="card">
-      <h3><span class="ic" data-icon="receipt"></span> 积分流水</h3>
-      <div id="ledger"><p class="muted">加载中…</p></div>
-      <button id="btn-ledger-more" hidden>加载更多</button>
+    <section role="tabpanel" id="panel-ledger" aria-labelledby="tab-ledger" tabindex="0" hidden>
+      <div class="card max-w-3xl">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="receipt"></span> 积分流水</h3>
+        <div id="ledger"><p class="muted">加载中…</p></div>
+        <button id="btn-ledger-more" class="btn mt-3" hidden>加载更多</button>
+      </div>
     </section>
 
-    <section class="card">
-      <h3><span class="ic" data-icon="hand-heart"></span> 捐助</h3>
-      <p class="muted">捐助确认后按下单时的兑换率获得积分。</p>
-      <form id="donate-form" class="donate-form">
-        <label>金额（元）<input type="number" id="donate-yuan" min="1" step="0.01" required></label>
-        <button class="primary" type="submit"><span class="ic" data-icon="plus" data-icon-size="16"></span> 创建捐助订单</button>
-      </form>
-      <div id="orders"><p class="muted">加载中…</p></div>
+    <section role="tabpanel" id="panel-donate" aria-labelledby="tab-donate" tabindex="0" hidden>
+      <div class="card max-w-2xl">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="hand-heart"></span> 捐助</h3>
+        <p class="muted mb-3">捐助确认后按下单时的兑换率获得积分。</p>
+        <form id="donate-form">
+          <label class="mb-2 block text-[13px] text-muted">金额（元）<input type="number" id="donate-yuan" min="1" step="0.01" required class="mt-1 max-w-[200px]"></label>
+          <button class="btn btn-primary mt-2" type="submit"><span class="ic" data-icon="plus" data-icon-size="16"></span> 创建捐助订单</button>
+        </form>
+        <div id="orders" class="mt-3"><p class="muted">加载中…</p></div>
+      </div>
     </section>
   </main>
 
   <script src="/assets/icons.js"></script>
   <script src="/assets/api.js"></script>
+  <script src="/assets/modal.js"></script>
+  <script src="/assets/tabs.js"></script>
   <script src="/assets/dashboard.js"></script>
 </body>
 </html>

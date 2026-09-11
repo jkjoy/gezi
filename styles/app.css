@@ -1,0 +1,147 @@
+/*
+ * app.css — Tailwind 源文件（构建产物为 public/assets/app.css）
+ *
+ * 构建：npm run build:css
+ * 注意：public/assets/app.css 是产物，需要随代码提交，因为 Cloudflare
+ * Workers Static Assets 直接分发 public/，部署时没有构建钩子。
+ *
+ * CSP 说明：产物是同源静态文件，满足 style-src 'self'；全站无内联样式。
+ */
+
+/* source(none) 关闭自动扫描，改为显式声明，避免把 src/*.ts 之类无关文件纳入 */
+@import "tailwindcss" source(none);
+@source "../public/**/*.html";
+@source "../public/assets/*.js";
+
+/* ---------------------------------------------------------------------------
+ * 设计令牌。@theme 既生成 utility（bg-panel / text-muted / border-line …），
+ * 也会输出到 :root，因此 wall.css 可以直接 var(--color-*) 复用同一套值。
+ * ------------------------------------------------------------------------- */
+@theme {
+  --color-bg: #0f1420;
+  --color-panel: #1a2233;
+  --color-panel-2: #223050;
+  --color-panel-3: #2a3a5e;
+  --color-ink: #e8edf7;
+  --color-muted: #8b98b3;
+  --color-accent: #4f8cff;
+  --color-accent-hover: #3e78ee;
+  --color-accent-2: #7c5cff;
+  --color-ok: #35c48d;
+  --color-warn: #ffb35c;
+  --color-err: #ff6b6b;
+  --color-err-hover: #e85555;
+  --color-line: #2c3a58;
+}
+
+@layer base {
+  /* 全站仅暗色：让原生滚动条、下拉与日期控件跟随 */
+  html { color-scheme: dark; }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font: 15px/1.6 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  a { color: var(--color-accent); }
+  a:hover { text-decoration: underline; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
+
+  /* Preflight 会清掉原生控件外观，这里给三页统一的表单基线 */
+  input, textarea, select {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.375rem;
+    background-color: var(--color-panel-2);
+    color: var(--color-ink);
+    font: inherit;
+  }
+  input::placeholder, textarea::placeholder { color: var(--color-muted); }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgb(79 140 255 / 0.25);
+  }
+  input[type="file"] { padding: 0.35rem 0.5rem; }
+  textarea { resize: vertical; }
+
+  /* icons.js 注入的内联 SVG 图标，三页通用 */
+  .ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+
+  /* Preflight 把 svg 设为 display:block。Icons.svg() 常被直接拼进文本
+     （如列表里的“↗ 链接”），在非 flex 容器里会让图标独占一行，所以恢复行内。
+     .ic 内部仍用 block，配合 inline-flex 居中。 */
+  svg { display: inline-block; vertical-align: -0.15em; }
+  .ic svg { display: block; vertical-align: baseline; }
+}
+
+/* ---------------------------------------------------------------------------
+ * 组件层：只收录被 JS 模板反复拼接的原语。页面布局一律直接写 utility，
+ * 这里留的是那些写在 innerHTML 字符串里、逐个展开会失控的东西。
+ * ------------------------------------------------------------------------- */
+@layer components {
+  .card {
+    @apply min-w-0 rounded-[10px] border border-line bg-panel p-[18px];
+  }
+
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5
+           rounded-md border border-line bg-panel-2 px-4 py-2 text-ink;
+  }
+  .btn:hover { @apply border-accent bg-panel-3; }
+  .btn:disabled { @apply cursor-not-allowed opacity-50; }
+  .btn:disabled:hover { @apply border-line bg-panel-2; }
+
+  .btn-primary { @apply border-accent bg-accent text-white; }
+  .btn-primary:hover { @apply border-accent-hover bg-accent-hover; }
+
+  .btn-danger { @apply border-err bg-err text-white; }
+  .btn-danger:hover { @apply border-err-hover bg-err-hover; }
+
+  /* 文字型按钮：外观是链接，语义仍是 button */
+  .btn-link {
+    @apply inline-flex cursor-pointer items-center gap-1.5 border-none
+           bg-transparent p-0 text-accent;
+    font: inherit;
+  }
+  .btn-link:hover { @apply underline; }
+
+  .tag {
+    @apply inline-flex items-center gap-1 rounded-[10px] border border-line
+           bg-panel-2 px-2 py-px text-xs;
+  }
+  .tag.ok { @apply border-ok text-ok; }
+  .tag.warn { @apply border-warn text-warn; }
+  .tag.err { @apply border-err text-err; }
+
+  /* 后台标签页导航。选中态用 aria-selected 驱动，样式与无障碍状态同源，
+     不需要额外的 .active 类去和 ARIA 属性保持同步。 */
+  .tab {
+    @apply inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap
+           border-b-2 border-transparent bg-transparent px-4 py-3 text-muted;
+  }
+  .tab:hover { @apply text-ink; }
+  .tab[aria-selected="true"] { @apply border-accent text-ink; }
+
+  /* wall.js 与后台脚本共用的弱化文本与状态行 */
+  .muted { @apply text-[13px] text-muted; }
+  .msg { @apply min-h-5 text-[13px]; }
+  .msg.ok { @apply text-ok; }
+  .msg.err { @apply text-err; }
+
+  /* 用户表由 admin.js 拼 innerHTML 生成，逐个单元格写 utility 不现实。
+     外层容器请配 overflow-x-auto：列数多于卡片宽度时横向滚动，
+     而不是把末列（用户 ID）裁掉。 */
+  .data-table { @apply w-full border-collapse text-[13px]; }
+  .data-table :is(th, td) { @apply border-b border-line px-2 py-1.5 text-left; }
+  .data-table th { @apply font-semibold text-muted; }
+  .data-table .num { @apply [font-variant-numeric:tabular-nums]; }
+}
+
+/*
+ * 不放进 @layer：无层级样式优先于所有 @layer，才能压过 .grid / .flex 等
+ * utility。否则登录态切换时 hidden 属性对布局容器无效。
+ */
+[hidden] { display: none !important; }

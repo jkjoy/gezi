@@ -4,70 +4,133 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台 — GeoPixel Wall</title>
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><a href="/"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
-    <nav>
-      <a href="/"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
-      <a href="/dashboard.html"><span class="ic" data-icon="user-circle" data-icon-size="16"></span> 我的后台</a>
-      <span id="user-badge" class="user-badge"></span>
-      <button id="btn-logout" class="linklike"><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
-    </nav>
-  </header>
+  <!-- 顶栏与标签栏同属一个 sticky 容器：两者一起吸顶，不必为标签栏算 top 偏移 -->
+  <div class="sticky top-0 z-10 bg-bg">
+    <header class="flex items-center justify-between border-b border-line bg-panel px-5 py-3">
+      <div class="inline-flex items-center gap-2 font-bold tracking-wide"><a href="/" class="inline-flex items-center gap-2 text-ink hover:no-underline"><span class="ic" data-icon="squares-four"></span> GeoPixel Wall</a></div>
+      <nav class="flex items-center gap-4">
+        <a href="/" class="inline-flex items-center gap-1.5"><span class="ic" data-icon="house" data-icon-size="16"></span> 像素墙</a>
+        <a href="/dashboard.html" class="inline-flex items-center gap-1.5"><span class="ic" data-icon="user-circle" data-icon-size="16"></span> 我的后台</a>
+        <span id="user-badge" class="inline-flex items-center gap-1.5 text-muted"></span>
+        <button id="btn-logout" class="btn-link"><span class="ic" data-icon="sign-out" data-icon-size="16"></span> 退出</button>
+      </nav>
+    </header>
 
-  <main class="admin-page">
-    <section class="card">
-      <h3><span class="ic" data-icon="gear-six"></span> 系统配置</h3>
-      <form id="settings-form"></form>
-      <div class="actions"><button class="primary" type="submit" form="settings-form"><span class="ic" data-icon="check-circle" data-icon-size="16"></span> 保存配置</button></div>
-      <p class="msg" id="settings-msg"></p>
-    </section>
-
-    <section class="card">
-      <h3><span class="ic" data-icon="users-three"></span> 用户</h3>
-      <form id="user-search" class="inline-form">
-        <input type="search" id="user-q" placeholder="搜索用户名">
-        <button type="submit"><span class="ic" data-icon="magnifying-glass" data-icon-size="16"></span> 搜索</button>
-      </form>
-      <div id="users"></div>
-    </section>
-
-    <section class="card">
-      <h3><span class="ic" data-icon="gift"></span> 批量赠送积分</h3>
-      <form id="bulk-form" class="stack-form">
-        <label>用户 ID（逗号或换行分隔）<textarea id="bulk-users" rows="3"></textarea></label>
-        <label>每人积分 <input type="number" id="bulk-amount" min="1" required></label>
-        <label>原因 <input type="text" id="bulk-reason" maxlength="200" required></label>
-        <button class="primary" type="submit"><span class="ic" data-icon="gift" data-icon-size="16"></span> 发放</button>
-      </form>
-      <div id="bulk-result"></div>
-    </section>
-
-    <section class="card">
-      <h3><span class="ic" data-icon="hand-heart"></span> 捐助订单</h3>
-      <div id="orders"><p class="muted">加载中…</p></div>
-    </section>
-
-    <section class="card">
-      <h3><span class="ic" data-icon="gear-six"></span> 运维</h3>
-      <div class="actions">
-        <button id="btn-run-settlement"><span class="ic" data-icon="clock-counter-clockwise" data-icon-size="16"></span> 手动日结</button>
-        <button id="btn-run-cleanup"><span class="ic" data-icon="broom" data-icon-size="16"></span> 清理孤儿图片</button>
+    <div class="border-b border-line">
+      <div class="mx-auto flex max-w-[1400px] gap-1 overflow-x-auto px-5" role="tablist" aria-label="管理后台导航">
+        <button type="button" role="tab" class="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="true"><span class="ic" data-icon="gear-six" data-icon-size="16"></span> 系统配置</button>
+        <button type="button" role="tab" class="tab" id="tab-users" aria-controls="panel-users" aria-selected="false"><span class="ic" data-icon="users-three" data-icon-size="16"></span> 用户</button>
+        <button type="button" role="tab" class="tab" id="tab-bulk" aria-controls="panel-bulk" aria-selected="false"><span class="ic" data-icon="gift" data-icon-size="16"></span> 批量赠送</button>
+        <button type="button" role="tab" class="tab" id="tab-orders" aria-controls="panel-orders" aria-selected="false"><span class="ic" data-icon="hand-heart" data-icon-size="16"></span> 捐助订单</button>
+        <button type="button" role="tab" class="tab" id="tab-ops" aria-controls="panel-ops" aria-selected="false"><span class="ic" data-icon="broom" data-icon-size="16"></span> 运维</button>
+        <button type="button" role="tab" class="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false"><span class="ic" data-icon="scroll" data-icon-size="16"></span> 操作记录</button>
       </div>
-      <pre id="ops-result" class="ops-result"></pre>
+    </div>
+  </div>
+
+  <main class="mx-auto max-w-[1400px] p-5" id="app-content">
+    <section role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" tabindex="0">
+      <div class="card">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="gear-six"></span> 系统配置</h3>
+        <!-- 字段多，单列会拉得很长；独占整页后按响应式多列排布 -->
+        <form id="settings-form" class="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3"></form>
+        <div class="mt-3.5 flex gap-2.5"><button class="btn btn-primary" type="submit" form="settings-form"><span class="ic" data-icon="check-circle" data-icon-size="16"></span> 保存配置</button></div>
+        <p class="msg mt-1" id="settings-msg"></p>
+      </div>
     </section>
 
-    <section class="card wide">
-      <h3><span class="ic" data-icon="scroll"></span> 操作记录</h3>
-      <div id="audit"><p class="muted">加载中…</p></div>
-      <button id="btn-audit-more" hidden>加载更多</button>
+    <section role="tabpanel" id="panel-users" aria-labelledby="tab-users" tabindex="0" hidden>
+      <div class="card">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="users-three"></span> 用户</h3>
+        <form id="user-search" class="mb-2.5 flex max-w-md gap-2">
+          <input type="search" id="user-q" placeholder="搜索用户名" class="flex-1">
+          <button type="submit" class="btn"><span class="ic" data-icon="magnifying-glass" data-icon-size="16"></span> 搜索</button>
+        </form>
+        <div id="users" class="overflow-x-auto"></div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="panel-bulk" aria-labelledby="tab-bulk" tabindex="0" hidden>
+      <div class="card max-w-3xl">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="gift"></span> 批量赠送积分</h3>
+        <p class="muted mb-4">按条件筛选发放对象，不必手工收集用户 ID。留空的条件不参与筛选；条件全空时不允许发放，避免误发全员。</p>
+
+        <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label class="block text-[13px] text-muted">角色
+            <select id="bulk-role" class="mt-1">
+              <option value="all">全部</option>
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+            </select>
+          </label>
+          <label class="block text-[13px] text-muted">余额下限
+            <input type="number" id="bulk-balance-min" min="0" placeholder="不限" class="mt-1">
+          </label>
+          <label class="block text-[13px] text-muted">余额上限
+            <input type="number" id="bulk-balance-max" min="0" placeholder="不限" class="mt-1">
+          </label>
+          <label class="block text-[13px] text-muted">注册起始日期
+            <input type="date" id="bulk-created-from" class="mt-1">
+          </label>
+          <label class="block text-[13px] text-muted">注册结束日期
+            <input type="date" id="bulk-created-to" class="mt-1">
+          </label>
+          <label class="block text-[13px] text-muted">用户名包含
+            <input type="text" id="bulk-q" maxlength="24" placeholder="不限" class="mt-1">
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <button id="btn-bulk-preview" type="button" class="btn"><span class="ic" data-icon="magnifying-glass" data-icon-size="16"></span> 预览匹配用户</button>
+        </div>
+        <div id="bulk-preview" class="mt-3"></div>
+
+        <div class="my-4 border-t border-line"></div>
+
+        <form id="bulk-form" class="max-w-md">
+          <label class="mb-2.5 block text-[13px] text-muted">每人积分 <input type="number" id="bulk-amount" min="1" required class="mt-1"></label>
+          <label class="mb-2.5 block text-[13px] text-muted">原因 <input type="text" id="bulk-reason" maxlength="200" required class="mt-1"></label>
+          <button class="btn btn-primary mt-2" type="submit"><span class="ic" data-icon="gift" data-icon-size="16"></span> 发放给匹配用户</button>
+        </form>
+        <div id="bulk-result" class="mt-3"></div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="panel-orders" aria-labelledby="tab-orders" tabindex="0" hidden>
+      <div class="card">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="hand-heart"></span> 捐助订单</h3>
+        <div id="orders"><p class="muted">加载中…</p></div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="panel-ops" aria-labelledby="tab-ops" tabindex="0" hidden>
+      <div class="card max-w-2xl">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="broom"></span> 运维</h3>
+        <p class="muted mb-3">日结与孤儿图片清理平时由 Cron 触发，这里可手动补跑。</p>
+        <div class="flex gap-2.5">
+          <button id="btn-run-settlement" class="btn"><span class="ic" data-icon="clock-counter-clockwise" data-icon-size="16"></span> 手动日结</button>
+          <button id="btn-run-cleanup" class="btn"><span class="ic" data-icon="broom" data-icon-size="16"></span> 清理孤儿图片</button>
+        </div>
+        <pre id="ops-result" class="mt-3 max-h-[200px] overflow-auto rounded-md bg-panel-2 p-2.5 text-xs whitespace-pre-wrap"></pre>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="panel-audit" aria-labelledby="tab-audit" tabindex="0" hidden>
+      <div class="card">
+        <h3 class="mb-3 flex items-center gap-2 text-[17px] font-semibold"><span class="ic text-accent" data-icon="scroll"></span> 操作记录</h3>
+        <div id="audit" class="overflow-x-auto"><p class="muted">加载中…</p></div>
+        <button id="btn-audit-more" class="btn mt-3" hidden>加载更多</button>
+      </div>
     </section>
   </main>
 
   <script src="/assets/icons.js"></script>
   <script src="/assets/api.js"></script>
+  <script src="/assets/modal.js"></script>
+  <script src="/assets/tabs.js"></script>
   <script src="/assets/admin.js"></script>
 </body>
 </html>

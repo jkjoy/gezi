@@ -186,31 +186,190 @@ export async function handleAdminUsers(ctx: Ctx): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// 用户筛选（批量赠送按条件定位，不必手工收集 ID）
+// ---------------------------------------------------------------------------
+
+/**
+ * 单次批量赠送覆盖的用户上限。
+ * 超过上限时直接报错而不是静默截断——宁可让管理员缩小条件，
+ * 也不能出现“以为发了 800 人、实际只发了前 500 人”的账实不符。
+ */
+const MAX_FILTER_USERS = 500;
+
+export interface UserFilter {
+  role?: "user" | "admin";
+  balanceMin?: number;
+  balanceMax?: number;
+  createdFrom?: number; // 注册时间下界（含当日 00:00 UTC）
+  createdTo?: number;   // 注册时间上界（含当日 23:59:59.999 UTC）
+  q?: string;           // 用户名关键词
+}
+
+/** 'YYYY-MM-DD' → 当日 UTC 00:00 毫秒；空值返回 undefined */
+function parseDayStart(v: unknown, name: string): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    throw new AppError("bad_param", `${name} 需为 YYYY-MM-DD 格式`, 400);
+  }
+  const ms = Date.parse(v + "T00:00:00Z");
+  if (Number.isNaN(ms)) throw new AppError("bad_param", `${name} 不是有效日期`, 400);
+  return ms;
+}
+
+/** 校验并归一化筛选条件；日期按 UTC 自然日处理（与库内时间戳约定一致） */
+export function parseUserFilter(body: Record<string, unknown>): UserFilter {
+  const f: UserFilter = {};
+
+  const role = body.role;
+  if (role !== undefined && role !== null && role !== "" && role !== "all") {
+    if (role !== "user" && role !== "admin") {
+      throw new AppError("bad_param", "角色只能是 user 或 admin", 400);
+    }
+    f.role = role;
+  }
+
+  const optionalInt = (v: unknown, name: string): number | undefined =>
+    v === undefined || v === null || v === "" ? undefined : asInt(v, 0, 1_000_000_000, name);
+  f.balanceMin = optionalInt(body.balanceMin, "余额下限");
+  f.balanceMax = optionalInt(body.balanceMax, "余额上限");
+
+  const from = parseDayStart(body.createdFrom, "注册起始日期");
+  const to = parseDayStart(body.createdTo, "注册结束日期");
+  if (from !== undefined) f.createdFrom = from;
+  // 结束日期含当日整天，否则“截止 9 月 10 日”会把当天注册的人漏掉
+  if (to !== undefined) f.createdTo = to + 86_400_000 - 1;
+
+  if (f.balanceMin !== undefined && f.balanceMax !== undefined && f.balanceMin > f.balanceMax) {
+    throw new AppError("bad_param", "余额下限不能大于上限", 400);
+  }
+  if (f.createdFrom !== undefined && f.createdTo !== undefined && f.createdFrom > f.createdTo) {
+    throw new AppError("bad_param", "注册起始日期不能晚于结束日期", 400);
+  }
+
+  const q = asStr(body.q ?? "", 24, "用户名关键词").toLowerCase();
+  if (q) f.q = q;
+  return f;
+}
+
+/**
+ * 条件 → WHERE 片段。片段数量由条件决定但取值全部走参数绑定，
+ * 用户输入不进 SQL 文本，无注入面。
+ */
+function filterWhere(f: UserFilter): { sql: string; binds: (string | number)[] } {
+  const clauses: string[] = [];
+  const binds: (string | number)[] = [];
+  if (f.role) { clauses.push("role = ?"); binds.push(f.role); }
+  if (f.balanceMin !== undefined) { clauses.push("balance >= ?"); binds.push(f.balanceMin); }
+  if (f.balanceMax !== undefined) { clauses.push("balance <= ?"); binds.push(f.balanceMax); }
+  if (f.createdFrom !== undefined) { clauses.push("created_at >= ?"); binds.push(f.createdFrom); }
+  if (f.createdTo !== undefined) { clauses.push("created_at <= ?"); binds.push(f.createdTo); }
+  if (f.q) {
+    clauses.push("username_lower LIKE ? ESCAPE '\\'");
+    binds.push(`%${f.q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+  }
+  return { sql: clauses.length ? " WHERE " + clauses.join(" AND ") : "", binds };
+}
+
+/** 空条件等价于“全部用户”，必须拒绝，否则一次误操作就是全员发分 */
+export function isEmptyFilter(f: UserFilter): boolean {
+  return (
+    !f.role &&
+    f.balanceMin === undefined &&
+    f.balanceMax === undefined &&
+    f.createdFrom === undefined &&
+    f.createdTo === undefined &&
+    !f.q
+  );
+}
+
+/** 按条件取出用户 ID；命中为空或超上限都报错，不静默截断 */
+async function resolveFilterUserIds(env: Ctx["env"], f: UserFilter): Promise<string[]> {
+  const { sql, binds } = filterWhere(f);
+  const rows = await env.DB.prepare(
+    `SELECT id FROM users${sql} ORDER BY created_at ASC LIMIT ?`
+  )
+    .bind(...binds, MAX_FILTER_USERS + 1)
+    .all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+  if (ids.length === 0) throw new AppError("no_match", "没有用户符合这些条件", 400);
+  if (ids.length > MAX_FILTER_USERS) {
+    throw new AppError("too_many", `匹配用户超过 ${MAX_FILTER_USERS} 人，请缩小条件范围`, 400);
+  }
+  return ids;
+}
+
+/** POST /api/admin/users/preview — 预览筛选命中情况（只读，不发放） */
+export async function handlePreviewUsers(ctx: Ctx): Promise<Response> {
+  const body = requireBody<Record<string, unknown>>(await readJson(ctx.req));
+  const filter = parseUserFilter(body);
+  if (isEmptyFilter(filter)) {
+    throw new AppError("bad_param", "请至少设置一个筛选条件", 400);
+  }
+  const { sql, binds } = filterWhere(filter);
+  const total = await ctx.env.DB.prepare(`SELECT COUNT(*) AS n FROM users${sql}`)
+    .bind(...binds)
+    .first<{ n: number }>();
+  const count = total?.n ?? 0;
+  const sample = await ctx.env.DB.prepare(
+    `SELECT id, username, role, balance, created_at FROM users${sql}
+     ORDER BY created_at ASC LIMIT 20`
+  )
+    .bind(...binds)
+    .all();
+  return json({
+    count,
+    limit: MAX_FILTER_USERS,
+    exceedsLimit: count > MAX_FILTER_USERS,
+    sample: sample.results.map((u) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      balance: u.balance,
+      createdAt: u.created_at,
+    })),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 批量赠送
 // ---------------------------------------------------------------------------
 
 export async function handleCreateBulkGrant(ctx: Ctx): Promise<Response> {
   const admin = ctx.user!;
   const body = requireBody<Record<string, unknown>>(await readJson(ctx.req));
-  const userIdsRaw = body.userIds;
-  if (!Array.isArray(userIdsRaw) || userIdsRaw.length === 0 || userIdsRaw.length > 500) {
-    throw new AppError("bad_param", "userIds 必须是 1-500 个用户 ID", 400);
-  }
-  const userIds = [...new Set(userIdsRaw.map((u) => asStr(u, 64, "用户 ID")))];
   const amount = asInt(body.amount, 1, 1_000_000, "赠送积分");
   const reason = asStr(body.reason, 200, "原因");
   if (!reason) throw new AppError("bad_param", "原因不能为空", 400);
 
-  // 预校验用户存在，避免 FK 错误信息不友好
-  const found = await ctx.env.DB.prepare(
-    `SELECT id FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`
-  )
-    .bind(...userIds)
-    .all<{ id: string }>();
-  const foundSet = new Set(found.results.map((r) => r.id));
-  const missing = userIds.filter((u) => !foundSet.has(u));
-  if (missing.length) {
-    throw new AppError("user_not_found", `以下用户不存在: ${missing.slice(0, 5).join(", ")}`, 400);
+  // 发放对象有两种来源：显式 ID 列表，或筛选条件。
+  // 条件在“发放时”于服务端重新解析，而不是沿用预览结果，
+  // 这样发出的人与当时条件完全一致，中间新增的用户也会被覆盖。
+  let userIds: string[];
+  let filter: UserFilter | null = null;
+  if (body.filter !== undefined) {
+    filter = parseUserFilter(requireBody<Record<string, unknown>>(body.filter));
+    if (isEmptyFilter(filter)) {
+      throw new AppError("bad_param", "请至少设置一个筛选条件", 400);
+    }
+    userIds = await resolveFilterUserIds(ctx.env, filter);
+  } else {
+    const userIdsRaw = body.userIds;
+    if (!Array.isArray(userIdsRaw) || userIdsRaw.length === 0 || userIdsRaw.length > MAX_FILTER_USERS) {
+      throw new AppError("bad_param", `userIds 必须是 1-${MAX_FILTER_USERS} 个用户 ID`, 400);
+    }
+    userIds = [...new Set(userIdsRaw.map((u) => asStr(u, 64, "用户 ID")))];
+
+    // 预校验用户存在，避免 FK 错误信息不友好
+    const found = await ctx.env.DB.prepare(
+      `SELECT id FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`
+    )
+      .bind(...userIds)
+      .all<{ id: string }>();
+    const foundSet = new Set(found.results.map((r) => r.id));
+    const missing = userIds.filter((u) => !foundSet.has(u));
+    if (missing.length) {
+      throw new AppError("user_not_found", `以下用户不存在: ${missing.slice(0, 5).join(", ")}`, 400);
+    }
   }
 
   const batchId = randomId("B");
@@ -227,9 +386,15 @@ export async function handleCreateBulkGrant(ctx: Ctx): Promise<Response> {
       )
     );
   }
-  await audit(ctx.env, admin.id, "bulk_grant.create", "bulk", batchId, { count: userIds.length, amount, reason });
+  // 审计里留下筛选条件，事后能还原“这批分是按什么条件发出去的”
+  await audit(ctx.env, admin.id, "bulk_grant.create", "bulk", batchId, {
+    count: userIds.length,
+    amount,
+    reason,
+    filter,
+  });
   const result = await processBulkGrants(ctx.env, batchId, admin.id);
-  return json({ batchId, ...result });
+  return json({ batchId, ...result, matched: userIds.length });
 }
 
 export async function handleRetryBulkGrant(ctx: Ctx): Promise<Response> {

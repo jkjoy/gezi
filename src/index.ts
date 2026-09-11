@@ -26,6 +26,7 @@ import {
   handleCreateBulkGrant,
   handleGetSettings,
   handleListBulkGrants,
+  handlePreviewUsers,
   handleRetryBulkGrant,
   handleSettlementRun,
   handleUpdateSettings,
@@ -99,6 +100,7 @@ route("POST", "/api/admin/init", "public", (ctx) => handleAdminInit(ctx));
 route("GET", "/api/admin/settings", "admin", (ctx) => handleGetSettings(ctx));
 route("PUT", "/api/admin/settings", "admin", (ctx) => handleUpdateSettings(ctx));
 route("GET", "/api/admin/users", "admin", (ctx) => handleAdminUsers(ctx));
+route("POST", "/api/admin/users/preview", "admin", (ctx) => handlePreviewUsers(ctx));
 route("POST", "/api/admin/bulk-grants", "admin", (ctx) => handleCreateBulkGrant(ctx));
 route("GET", "/api/admin/bulk-grants", "admin", (ctx) => handleListBulkGrants(ctx));
 route("POST", "/api/admin/bulk-grants/:batch/retry", "admin", (ctx) => handleRetryBulkGrant(ctx));

@@ -8,8 +8,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build:css": "tailwindcss -i ./styles/app.css -o ./public/assets/app.css --minify",
+    "watch:css": "tailwindcss -i ./styles/app.css -o ./public/assets/app.css --watch",
+    "dev": "npm run build:css && wrangler dev",
+    "deploy": "npm run build:css && wrangler deploy",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,7 +23,9 @@
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260908.1",
     "@playwright/test": "^1.54.0",
+    "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^24.13.3",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.8.2",
     "vitest": "^4.1.0",
     "wrangler": "^4.130.0"
