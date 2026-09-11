@@ -63,6 +63,9 @@
       $("auth-msg").textContent = "";
     });
 
+    const recoverBtn = $("auth-recover");
+    recoverBtn.addEventListener("click", showRecoverModal);
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
@@ -72,6 +75,26 @@
           username: String(fd.get("username") || ""),
           password: String(fd.get("password") || ""),
         });
+        if (mode === "register" && resp.recoveryCode) {
+          // 恢复码只显示这一次：禁用表单、展示恢复码，等用户确认已保存再进入。
+          // 不自动刷新——1.8 秒不够抄录一组恢复码。
+          for (const el of form.querySelectorAll("input")) el.disabled = true;
+          const msg = $("auth-msg");
+          msg.className = "msg ok";
+          msg.innerHTML = `
+            <p class="mb-2">${API.esc(resp.message)}</p>
+            <div class="rounded-md border border-accent bg-panel-2 px-3 py-2 text-center">
+              <div class="mb-1 text-xs text-muted">恢复码（仅此一次展示，请抄录保存）</div>
+              <code class="text-sm tracking-wider">${API.esc(resp.recoveryCode)}</code>
+            </div>`;
+          const done = document.createElement("button");
+          done.type = "button";
+          done.className = "btn btn-primary mt-3";
+          done.textContent = "我已保存，进入后台";
+          done.addEventListener("click", () => location.reload());
+          msg.appendChild(done);
+          return; // 不自动刷新
+        }
         if (resp.message) {
           // 管理员提示先亮出来再刷新，用户能看到身份说明
           $("auth-msg").className = "msg ok";
@@ -84,6 +107,49 @@
         $("auth-msg").textContent = (mode === "login" ? "登录失败：" : "注册失败：") + API.esc(err.message);
         submit.disabled = false;
       }
+    });
+  }
+
+  // ---- 未登录：忘记密码（恢复码重置） ----
+  function showRecoverModal() {
+    Modal.open({
+      title: "找回密码",
+      icon: "shield-check",
+      confirmText: "重置密码",
+      render(body) {
+        body.innerHTML =
+          '<label class="mb-3 block text-[13px] text-muted">用户名' +
+          '<input id="rec-username" autocomplete="username" maxlength="24" class="mt-1.5"></label>' +
+          '<label class="mb-3 block text-[13px] text-muted">恢复码' +
+          '<input id="rec-code" maxlength="64" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" class="mt-1.5"></label>' +
+          '<label class="mb-3 block text-[13px] text-muted">新密码（至少 8 位）' +
+          '<input id="rec-pass" type="password" autocomplete="new-password" maxlength="64" class="mt-1.5"></label>' +
+          '<label class="mb-3 block text-[13px] text-muted">确认新密码' +
+          '<input id="rec-pass2" type="password" autocomplete="new-password" maxlength="64" class="mt-1.5"></label>' +
+          '<p class="mt-1.5 text-xs text-muted">恢复码在注册或重新生成时显示，仅出现一次。</p>';
+        body.querySelector("#rec-username").focus();
+        return () => {
+          const username = body.querySelector("#rec-username").value.trim();
+          const recoveryCode = body.querySelector("#rec-code").value.trim();
+          const p1 = body.querySelector("#rec-pass").value;
+          const p2 = body.querySelector("#rec-pass2").value;
+          if (!username) throw new Error("请填写用户名");
+          if (!recoveryCode) throw new Error("请填写恢复码");
+          if (p1.length < 8) throw new Error("新密码至少 8 位");
+          if (p1 !== p2) throw new Error("两次输入的密码不一致");
+          return { username, recoveryCode, newPassword: p1 };
+        };
+      },
+      async onConfirm(v) {
+        // 服务端会轮换恢复码并返回新码，必须展示，否则下次忘记密码就彻底进不去
+        const r = await API.post("/api/auth/recover", v);
+        Modal.alert({
+          title: "密码已重置",
+          icon: "shield-check",
+          message:
+            "请用新密码登录。\n\n新恢复码（仅此一次展示，请保存）：\n" + r.recoveryCode,
+        });
+      },
     });
   }
 
@@ -291,6 +357,8 @@
       location.href = "/";
     });
     $("btn-ledger-more").addEventListener("click", () => { ledgerPage++; loadLedger(); });
+    $("btn-change-password").addEventListener("click", showChangePasswordModal);
+    $("btn-regen-recovery").addEventListener("click", showRegenRecoveryModal);
     $("donate-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const yuan = Number($("donate-yuan").value);
@@ -310,6 +378,68 @@
       } catch (err) {
         Modal.alert({ title: "创建失败", danger: true, message: err.message });
       }
+    });
+  }
+
+  // ---- 已登录：修改密码（成功后强制重新登录） ----
+  function showChangePasswordModal() {
+    Modal.open({
+      title: "修改密码",
+      icon: "pencil-simple",
+      confirmText: "修改并重新登录",
+      render(body) {
+        body.innerHTML =
+          '<label class="mb-3 block text-[13px] text-muted">原密码' +
+          '<input id="cp-old" type="password" autocomplete="current-password" maxlength="64" class="mt-1.5"></label>' +
+          '<label class="mb-3 block text-[13px] text-muted">新密码（至少 8 位）' +
+          '<input id="cp-new" type="password" autocomplete="new-password" maxlength="64" class="mt-1.5"></label>' +
+          '<label class="mb-3 block text-[13px] text-muted">确认新密码' +
+          '<input id="cp-new2" type="password" autocomplete="new-password" maxlength="64" class="mt-1.5"></label>' +
+          '<p class="mt-1.5 text-xs text-muted">修改成功后所有登录会话都会失效，需要重新登录。</p>';
+        body.querySelector("#cp-old").focus();
+        return () => {
+          const oldPassword = body.querySelector("#cp-old").value;
+          const p1 = body.querySelector("#cp-new").value;
+          const p2 = body.querySelector("#cp-new2").value;
+          if (!oldPassword) throw new Error("请填写原密码");
+          if (p1.length < 8) throw new Error("新密码至少 8 位");
+          if (p1 !== p2) throw new Error("两次输入的新密码不一致");
+          return { oldPassword, newPassword: p1 };
+        };
+      },
+      async onConfirm(v) {
+        await API.post("/api/me/password", v); // 服务端已清会话 Cookie
+        await Modal.alert({
+          title: "密码已修改",
+          icon: "check-circle",
+          message: "请用新密码重新登录。",
+        });
+        location.reload(); // Cookie 已清除，刷新后回到登录卡
+      },
+    });
+  }
+
+  // ---- 已登录：重新生成恢复码（旧码立即失效） ----
+  function showRegenRecoveryModal() {
+    Modal.open({
+      title: "重新生成恢复码",
+      icon: "shield-check",
+      confirmText: "重新生成",
+      render(body) {
+        const el = document.createElement("p");
+        el.className = "my-1 text-sm leading-relaxed";
+        el.textContent = "将生成一组新的恢复码，旧的立即失效。新码只显示这一次，请妥善保存。";
+        body.appendChild(el);
+        return () => true;
+      },
+      async onConfirm() {
+        const r = await API.post("/api/me/recovery-code");
+        Modal.alert({
+          title: "新恢复码已生成",
+          icon: "shield-check",
+          message: "请保存（仅此一次展示）：\n\n" + r.recoveryCode,
+        });
+      },
     });
   }
 

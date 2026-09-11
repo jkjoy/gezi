@@ -166,9 +166,12 @@
       cancelBtn.disabled = true;
       const label = okBtn.innerHTML;
       okBtn.innerHTML = "处理中…";
+      const cardBefore = overlay.firstElementChild;
       try {
         await opts.onConfirm(values);
-        close();
+        // onConfirm 内部可能已打开新的模态（如成功后的提示窗）：此时 overlay
+        // 内容已被替换，外层的 close() 会把新模态立刻关掉，必须跳过。
+        if (overlay.firstElementChild === cardBefore) close();
       } catch (e) {
         okBtn.disabled = false;
         cancelBtn.disabled = false;

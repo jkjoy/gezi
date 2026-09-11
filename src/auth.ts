@@ -12,6 +12,7 @@ import {
   type SessionUser,
   USERNAME_RE,
   asStr,
+  audit,
   clearedSessionCookie,
   constantTimeEqual,
   json,
@@ -132,8 +133,18 @@ function genInviteCode(): string {
   return Array.from(buf, (b) => INVITE_ALPHABET[b % INVITE_ALPHABET.length]).join("");
 }
 
-export async function createUser(env: Env, username: string, password: string, role: "user" | "admin"): Promise<string> {
+/** 生成一次性恢复码（高熵，分 4 组便于抄录）与其 SHA-256 哈希；仅哈希入库 */
+async function genRecovery(): Promise<{ code: string; hash: string }> {
+  const buf = crypto.getRandomValues(new Uint8Array(20));
+  const raw = Array.from(buf, (b) => INVITE_ALPHABET[b % INVITE_ALPHABET.length]).join("");
+  const code = (raw.match(/.{1,5}/g) || [raw]).join("-"); // XXXXX-XXXXX-XXXXX-XXXXX
+  const hash = await sha256Hex(code);
+  return { code, hash };
+}
+
+export async function createUser(env: Env, username: string, password: string, role: "user" | "admin"): Promise<{ uid: string; recoveryCode: string }> {
   const passwordHash = await hashPassword(password);
+  const { code: recoveryCode, hash: recoveryHash } = await genRecovery();
   const uid = randomId("u");
   const settings = await readSettings(env);
   // 管理员初始化账户不发注册奖励，需要积分时由批量赠送发放
@@ -143,9 +154,9 @@ export async function createUser(env: Env, username: string, password: string, r
     const code = genInviteCode();
     const stmts: D1PreparedStatement[] = [
       env.DB.prepare(
-        `INSERT INTO users (id, username, username_lower, password_hash, role, balance, invite_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(uid, username, username.toLowerCase(), passwordHash, role, reward, code, now),
+        `INSERT INTO users (id, username, username_lower, password_hash, role, balance, invite_code, recovery_hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(uid, username, username.toLowerCase(), passwordHash, role, reward, code, recoveryHash, now),
     ];
     if (reward > 0) {
       // 注册奖励：用户行与账本同一事务写入；balance_after 直接取 users.balance
@@ -169,7 +180,7 @@ export async function createUser(env: Env, username: string, password: string, r
     }
     try {
       await env.DB.batch(stmts);
-      return uid;
+      return { uid, recoveryCode };
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
       if (msg.includes("UNIQUE constraint failed: users.invite_code")) continue; // 邀请码撞码，换一个重试
@@ -198,13 +209,16 @@ export async function handleRegister(ctx: Ctx): Promise<Response> {
   const ip = trustedClientIp(ctx.req) ?? "unknown";
   await rateLimit(ctx.env, `reg:${ip}`, 5, 3600_000);
 
-  const uid = await createUser(ctx.env, username, password, "user");
+  const { uid, recoveryCode } = await createUser(ctx.env, username, password, "user");
   const { token, maxAgeSec } = await createSession(ctx.env, uid);
   const user = await mustGetUser(ctx.env, uid);
-  // 首个注册用户自动成为管理员：响应中明确告知，避免用户不知道自己的角色
-  const message = user.role === "admin" ? "注册成功。你是本站首位注册用户，已自动成为管理员。" : undefined;
+  const roleMsg = user.role === "admin" ? "你是本站首位注册用户，已自动成为管理员。" : "";
   return json(
-    { user: publicUser(user), message },
+    {
+      user: publicUser(user),
+      message: `注册成功。${roleMsg}请妥善保存下方恢复码，忘记密码时用它重置（仅此一次展示）。`,
+      recoveryCode,
+    },
     200,
     { "set-cookie": sessionCookie(token, maxAgeSec, ctx.url.protocol === "https:") }
   );
@@ -294,3 +308,111 @@ export async function mustGetUser(env: Env, userId: string): Promise<SessionUser
 
 // 导出供测试使用
 export const _internal = { constantTimeEqual, toHex };
+
+// ---------------------------------------------------------------------------
+// 账户自助：修改密码 / 修改资料 / 重生成恢复码 / 忘记密码找回
+// ---------------------------------------------------------------------------
+
+/** 撤销某用户的全部会话（改密/找回后强制重新登录） */
+async function revokeAllSessions(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
+}
+
+/** POST /api/me/password — 已登录改密码：验旧密码 → 换新 → 撤销全部会话 */
+export async function handleChangePassword(ctx: Ctx): Promise<Response> {
+  const user = ctx.user!;
+  const body = requireBody<Record<string, unknown>>(await readJson(ctx.req));
+  const oldPassword = asStr(body.oldPassword, 64, "原密码", false);
+  const newPassword = asStr(body.newPassword, 64, "新密码", false);
+  if (newPassword.length < 8) throw new AppError("bad_password", "新密码至少 8 位", 400);
+
+  await rateLimit(ctx.env, `pwd:${user.id}`, 10, 3600_000);
+  const row = await ctx.env.DB.prepare("SELECT password_hash FROM users WHERE id = ?")
+    .bind(user.id)
+    .first<{ password_hash: string }>();
+  if (!row || !(await verifyPassword(oldPassword, row.password_hash))) {
+    throw new AppError("bad_credentials", "原密码错误", 401);
+  }
+  const newHash = await hashPassword(newPassword);
+  await ctx.env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(newHash, user.id).run();
+  await revokeAllSessions(ctx.env, user.id);
+  await audit(ctx.env, user.id, "account.password_change", "user", user.id);
+  return json({ ok: true, message: "密码已修改，请用新密码重新登录。" }, 200, {
+    "set-cookie": clearedSessionCookie(),
+  });
+}
+
+/** PATCH /api/me/profile — 修改个人资料（当前支持用户名） */
+export async function handleUpdateProfile(ctx: Ctx): Promise<Response> {
+  const user = ctx.user!;
+  const body = requireBody<Record<string, unknown>>(await readJson(ctx.req));
+  if (body.username === undefined) throw new AppError("bad_request", "没有需要修改的字段", 400);
+  const username = asStr(body.username, 24, "用户名");
+  if (!USERNAME_RE.test(username)) {
+    throw new AppError("bad_username", "用户名需为 3-24 位字母、数字、下划线或连字符", 400);
+  }
+  if (username.toLowerCase() === user.username.toLowerCase()) {
+    // 大小写调整允许；完全相同则直接返回
+    if (username === user.username) return json({ user: publicUser({ ...user, username }) });
+  }
+  try {
+    const r = await ctx.env.DB.prepare(
+      "UPDATE users SET username = ?, username_lower = ? WHERE id = ?"
+    )
+      .bind(username, username.toLowerCase(), user.id)
+      .run();
+    if (r.meta.changes !== 1) throw new AppError("user_not_found", "用户不存在", 404);
+  } catch (e) {
+    if (String((e as Error)?.message ?? e).includes("UNIQUE constraint failed: users.username_lower")) {
+      throw new AppError("username_taken", "用户名已被占用", 409);
+    }
+    throw e;
+  }
+  await audit(ctx.env, user.id, "account.profile_update", "user", user.id, { username });
+  return json({ user: publicUser(await mustGetUser(ctx.env, user.id)) });
+}
+
+/** POST /api/me/recovery-code — 已登录重新生成恢复码（旧码失效，明文仅返回一次） */
+export async function handleRegenRecovery(ctx: Ctx): Promise<Response> {
+  const user = ctx.user!;
+  const { code, hash } = await genRecovery();
+  await ctx.env.DB.prepare("UPDATE users SET recovery_hash = ? WHERE id = ?").bind(hash, user.id).run();
+  await audit(ctx.env, user.id, "account.recovery_regen", "user", user.id);
+  return json({ recoveryCode: code, message: "新恢复码已生成，请妥善保存；旧恢复码已失效。" });
+}
+
+/** POST /api/auth/recover — 未登录：用户名 + 恢复码 + 新密码 重置密码 */
+export async function handleRecover(ctx: Ctx): Promise<Response> {
+  const body = requireBody<Record<string, unknown>>(await readJson(ctx.req));
+  const username = asStr(body.username, 24, "用户名");
+  const recoveryCode = asStr(body.recoveryCode, 64, "恢复码");
+  const newPassword = asStr(body.newPassword, 64, "新密码", false);
+  if (newPassword.length < 8) throw new AppError("bad_password", "新密码至少 8 位", 400);
+
+  const ip = trustedClientIp(ctx.req) ?? "unknown";
+  await rateLimit(ctx.env, `recover:${ip}`, 10, 3600_000);
+  await rateLimit(ctx.env, `recoveru:${username.toLowerCase()}`, 10, 3600_000);
+
+  const row = await ctx.env.DB.prepare("SELECT id, recovery_hash FROM users WHERE username_lower = ?")
+    .bind(username.toLowerCase())
+    .first<{ id: string; recovery_hash: string | null }>();
+  const codeHash = await sha256Hex(recoveryCode);
+  // 恒定时间比较；用户不存在或未设恢复码时统一报错，不泄露账户状态
+  const stored = row?.recovery_hash ?? "";
+  if (!row || !stored || !constantTimeEqual(codeHash, stored)) {
+    throw new AppError("bad_recovery", "用户名或恢复码错误，或该账户未设置恢复码", 401);
+  }
+  // 重置密码 + 轮换恢复码 + 撤销全部会话，同一批次提交
+  const newHash = await hashPassword(newPassword);
+  const next = await genRecovery();
+  await ctx.env.DB.batch([
+    ctx.env.DB.prepare("UPDATE users SET password_hash = ?, recovery_hash = ? WHERE id = ?").bind(newHash, next.hash, row.id),
+    ctx.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(row.id),
+  ]);
+  await audit(ctx.env, row.id, "account.recover", "user", row.id);
+  return json({
+    ok: true,
+    recoveryCode: next.code,
+    message: "密码已重置，请用新密码登录。恢复码已更新，请保存新的恢复码。",
+  });
+}

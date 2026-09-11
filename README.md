@@ -97,7 +97,8 @@ gezi/
 ├── .dev.vars.example           # 本地环境变量示例（不含真实密钥）
 ├── .gitignore
 ├── migrations/
-│   └── 0001_init.sql           # 全部 13 张表 + 默认配置
+│   ├── 0001_init.sql           # 全部 13 张表 + 默认配置
+│   └── 0002_recovery.sql       # users.recovery_hash（恢复码哈希）
 ├── src/
 │   ├── index.ts                # fetch / scheduled 入口、路由、安全响应头
 │   ├── util.ts                 # 类型、错误、校验、限流、账户协调租约、配置、审计、账本语句
@@ -196,9 +197,10 @@ POST /api/invite/visit               邀请访问上报
 
 **认证**
 ```
-POST /api/auth/register              注册（首个注册用户自动成为管理员）
+POST /api/auth/register              注册（首个注册用户自动成为管理员，响应含一次性恢复码）
 POST /api/auth/login                 登录
 POST /api/auth/logout                退出
+POST /api/auth/recover               忘记密码：恢复码 + 新密码 重置（轮换恢复码）
 GET  /api/auth/me                    当前用户 + 邀请统计
 ```
 
@@ -209,6 +211,9 @@ GET    /api/me/ledger                我的积分流水（分页）
 GET    /api/me/orders                我的捐助订单
 POST   /api/me/orders                创建捐助订单
 POST   /api/me/orders/:id/cancel     取消待确认订单
+POST   /api/me/password              修改密码（成功后撤销全部会话，需重新登录）
+PATCH  /api/me/profile               修改资料（当前支持用户名）
+POST   /api/me/recovery-code         重新生成恢复码（旧码立即失效，新码仅返回一次）
 POST   /api/uploads                  上传图片
 POST   /api/posts                    发布内容（幂等）
 PATCH  /api/posts/:id                编辑内容
@@ -368,6 +373,22 @@ npx wrangler d1 execute gezi --remote \
 预览接口 `POST /api/admin/users/preview` 是只读的，返回 `count`、`exceedsLimit` 与最多 20 条样本，供发放前核对人数。
 
 `POST /api/admin/bulk-grants` 同时接受 `userIds`（显式 ID 列表，1-500 个）与 `filter`（筛选条件），两者互斥、必居其一。UI 只用 `filter`；`userIds` 保留以兼容既有调用。
+
+---
+
+## 账户安全与恢复码
+
+每个用户持有一组一次性恢复码（`XXXXX-XXXXX-XXXXX-XXXXX`，高熵随机），库内只存 SHA-256 哈希，忘记密码时用它自助重置。
+
+安全约定：
+
+* **只显示一次**：注册成功、找回成功、重新生成时各返回一次明文，之后不可再查；
+* **找回即轮换**：`POST /api/auth/recover` 重置密码的同时生成新恢复码，旧码立即失效；
+* **不泄露账户状态**：用户不存在、未设置恢复码、恢复码错误统一返回同一报错；
+* **修改密码会撤销全部会话**：改密后所有设备都要重新登录（`handleChangePassword` 删除该用户全部 sessions）；
+* 恢复码相关动作均写审计日志（`password_change` / `recovery_regen` / `recover` / `profile_update`）。
+
+前端入口：注册成功页展示恢复码并要求确认"我已保存"（不会自动刷新）；登录卡提供"忘记密码"；「账户」标签下提供"修改密码"与"重新生成恢复码"。
 
 ---
 

@@ -5,7 +5,17 @@
  * 直接处理），其余路径交给 Workers Static Assets。
  */
 import { AppError, type Ctx, type Env, type SessionUser, asStr, assertSameOrigin, json, readSettings } from "./util.js";
-import { getSessionUser, handleLogin, handleLogout, handleMe, handleRegister } from "./auth.js";
+import {
+  getSessionUser,
+  handleChangePassword,
+  handleLogin,
+  handleLogout,
+  handleMe,
+  handleRecover,
+  handleRegister,
+  handleRegenRecovery,
+  handleUpdateProfile,
+} from "./auth.js";
 import {
   handleDeletePost,
   handleEditPost,
@@ -81,6 +91,7 @@ route("GET", "/api/images/*", "public", (ctx) => handleImage(ctx));
 route("POST", "/api/auth/register", "public", (ctx) => handleRegister(ctx));
 route("POST", "/api/auth/login", "public", (ctx) => handleLogin(ctx));
 route("POST", "/api/auth/logout", "public", (ctx) => handleLogout(ctx));
+route("POST", "/api/auth/recover", "public", (ctx) => handleRecover(ctx));
 route("GET", "/api/auth/me", "public", (ctx) => handleMe(ctx));
 
 // ---- 用户 ----
@@ -89,6 +100,9 @@ route("GET", "/api/me/ledger", "user", (ctx) => handleListLedger(ctx));
 route("GET", "/api/me/orders", "user", (ctx) => handleListOrders(ctx));
 route("POST", "/api/me/orders", "user", (ctx) => handleCreateOrder(ctx));
 route("POST", "/api/me/orders/:id/cancel", "user", (ctx) => handleCancelOrder(ctx));
+route("POST", "/api/me/password", "user", (ctx) => handleChangePassword(ctx));
+route("PATCH", "/api/me/profile", "user", (ctx) => handleUpdateProfile(ctx));
+route("POST", "/api/me/recovery-code", "user", (ctx) => handleRegenRecovery(ctx));
 route("POST", "/api/uploads", "user", (ctx) => handleUpload(ctx));
 route("POST", "/api/posts", "user", (ctx) => handlePublish(ctx));
 route("PATCH", "/api/posts/:id", "user", (ctx) => handleEditPost(ctx));
